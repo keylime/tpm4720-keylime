@@ -1,0 +1,1462 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_context 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+
+doKeyContextTest ()
+{
+	CONTEXTFILE=context_storagekey_nm.bin
+	rm -rf $CONTEXTFILE > /dev/null
+	echo "Testing context for key - 1st storage key."
+	echo "Sealing contents of file 'input'. Using 1st storage key $STORAGEKEY_NM_HANDLE."
+	./sealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file."
+		rm -rf output
+		./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file."
+			dumpOutput
+		else
+			echo " INFO: Success unsealing contents of file."
+			echo " INFO: Difference in files:"
+			diff input output
+		fi
+	fi
+
+
+	echo "Saving the context of the 1st storage key $STORAGEKEY_NM_HANDLE."
+	savecontext -ha $STORAGEKEY_NM_HANDLE \
+	            -rt $TPM_RT_KEY \
+	            -la storagekey \
+	            -of $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not save key context. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully saved key context."
+	fi
+
+
+	echo "Evicting the key ($STORAGEKEY_NM_HANDLE) whose context was saved."
+	evictkey -hk $STORAGEKEY_NM_HANDLE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "ERROR: Could not evict the key."
+		dumpOutput
+	else
+		echo " INFO: Successfully evicted the key."
+	fi
+
+
+	echo "Trying to unseal the file now after key context save."
+	rm -rf output
+	./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	             -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NM_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " INFO: Successfully completed the command."
+	else
+		echo " ERROR: Success unsealing contents of file."
+		dumpOutput
+	fi
+
+
+	echo "Loading previously stored key context into TPM [$STORAGEKEY_NM_HANDLE]."
+	loadcontext -keep \
+	            -ha $STORAGEKEY_NM_HANDLE \
+	            -if $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not load context into TPM. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully loaded context into the TPM."
+	fi
+
+
+	echo "Trying to unseal the file now (again)."
+	rm -rf output
+	unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	             -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NM_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success unsealing contents of file."
+		echo " INFO: Difference in files:"
+		diff input output
+	fi
+
+
+	echo "Saving the context of the 1st storage key $STORAGEKEY_NM_HANDLE (again)."
+	savecontext -ha $STORAGEKEY_NM_HANDLE \
+	            -rt $TPM_RT_KEY \
+	            -la storagekey \
+	            -of $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not save key context. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully saved key context."
+	fi
+
+
+	echo "Evicting the key whose context was saved."
+	evictkey -hk $STORAGEKEY_NM_HANDLE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "ERROR: Could not evict the key."
+		dumpOutput
+	else
+		echo " INFO: Successfully evicted the key."
+	fi
+
+
+	echo "Trying to unseal the file now after key context save."
+	rm -rf output
+	./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	             -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NM_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " INFO: Successfully completed the command."
+	else
+		echo " ERROR: Success unsealing contents of file."
+		dumpOutput
+	fi
+
+
+	echo "Loading previously stored key context into TPM [$STORAGEKEY_NM_HANDLE]."
+	loadcontext -keep \
+	            -ha $STORAGEKEY_NM_HANDLE \
+	            -if $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		STORAGEKEY_NM_HANDLE=`cat run.out | grep -E "New Handle" | gawk '{print $4}'`
+		echo " INFO: Successfully loaded the key into handle $STORAGEKEY_NM_HANDLE."
+	else
+		echo " ERROR: Could not restore the key context."
+		dumpOutput
+	fi
+
+	check_audit_digest
+
+### Make storage key un-evictable!
+
+	echo "Making the 1st storage key ($STORAGEKEY_NM_HANDLE) non-evictable."
+	keycontrol -pwdk $STORAGEKEY_NM_PASSWORD \
+		-hk $STORAGEKEY_NM_HANDLE \
+		-bn 1 \
+		-bv $TRUE \
+		-pwdo $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not change property on 1st storage key. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully changed key property."
+	fi
+
+	echo "Attempting to flush the 1st storage key ($STORAGEKEY_NM_HANDLE)."
+	flushspecific -ha $STORAGEKEY_NM_HANDLE -rt $TPM_RT_KEY > run.out
+	ERR=$?
+#the Infineon TPM returns TPM_OWNER_CONTROL
+	if [ $ERR -eq $TPM_KEY_OWNER_CONTROL -o \
+	     $ERR -eq $TPM_OWNER_CONTROL ]; then
+		echo " INFO: Successfully completed command ($ERR)."
+	else
+		echo " ERROR: Could flush the key."
+		dumpOutput
+	fi
+
+
+	echo "Sealing contents of file 'input'. Using 1st storage key ($STORAGEKEY_NM_HANDLE)."
+	./sealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file."
+		rm -rf output
+		./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file."
+			dumpOutput
+		else
+			echo " INFO: Success unsealing contents of file."
+			echo " INFO: Difference in files:"
+			diff input output
+		fi
+	fi
+
+	echo "Saving the context of the 1st storage key ($STORAGEKEY_NM_HANDLE)."
+	savecontext -ha $STORAGEKEY_NM_HANDLE \
+	            -rt $TPM_RT_KEY \
+	            -la storagekey \
+	            -of $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: Could save the key context."
+		dumpOutput
+	elif [ $ERR -eq $TPM_OWNER_CONTROL -o \
+	       $ERR -eq $TPM_KEY_OWNER_CONTROL ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " WARN: Received unexpected return code: $ERR"
+	fi
+
+### Make storage key evictable!
+
+	echo "Making the 1st storage key evictable ($STORAGEKEY_NM_HANDLE)."
+	keycontrol -pwdk $STORAGEKEY_NM_PASSWORD \
+		-hk $STORAGEKEY_NM_HANDLE \
+		-bn 1 \
+		-bv $FALSE \
+		-pwdo $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not change property on 1st storage key. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully changed key property."
+	fi
+
+	echo "Evicting the 1st storage key ($STORAGEKEY_NM_HANDLE)."
+	evictkey -hk $STORAGEKEY_NM_HANDLE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not evict the storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully evicted the 1st storage key."
+	fi
+
+	echo "Trying to unseal the file now (again)."
+	rm -rf output
+	./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	             -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NM_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Could unseal the file although key should not be there anymore."
+		dumpOutput
+	fi
+
+	check_audit_digest
+
+	echo "Evicting storage key ($STORAGEKEY_NM_HANDLE)."
+	evictkey -hk $STORAGEKEY_NM_HANDLE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not evict storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully evicted storage key."
+		sync_auditing
+	fi
+
+	echo "Trying to unseal the file now (again)."
+	rm -rf output
+	./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	             -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NM_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully ($ERR)."
+	else
+		echo " ERROR: Could unsealing contents of file."
+		dumpOutput
+	fi
+
+	echo "Loading previously stored key context into TPM."
+	loadcontext -keep \
+	            -ha $STORAGEKEY_NM_HANDLE \
+	            -if $CONTEXTFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Loaded key back into TPM."
+	else
+		echo " ERROR: Could not load key context."
+		dumpOutput
+	fi
+
+	check_audit_digest
+
+
+	echo "Loading storage key back into TPM."
+	loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+	          -ik $STORAGEKEY_NM_FILENAME.key \
+	          -pwdp $SRK_PASSWORD > loadkey.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not load storage key into TPM. Leaving test."
+		dumpOutput
+		return 1
+	else
+		STORAGEKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+		echo " INFO: Loaded storage key into TPM. Handle is $STORAGEKEY_NM_HANDLE"
+	fi
+
+
+	check_audit_digest
+
+
+
+### Test with savekeycontext / loadkeycontext
+	#SaveKeyContext implemented?
+	checkOrdImplemented 0xb4
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo ""
+		echo " Skipping Save/LoadKeyContext test since not supported by TPM"
+		echo ""
+	else
+
+		rm -rf $CONTEXTFILE > /dev/null
+		echo "Testing context for key - 1st storage key."
+		echo "Sealing contents of file 'input'. Using 1st storage key ($STORAGEKEY_NM_HANDLE)."
+		./sealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		           -pwdd $DATAUSE_PASSWORD \
+		           -hk $STORAGEKEY_NM_HANDLE \
+		           -if input -of outputa > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Error sealing contents of file 'input'."
+			dumpOutput
+		else
+			echo " INFO: Successfully sealed contents of file."
+			echo "Trying to unseal contents of file."
+			rm -rf output
+			./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+			             -pwdd $DATAUSE_PASSWORD \
+			             -hk $STORAGEKEY_NM_HANDLE \
+			             -if outputa -of output > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not unseal contents of file."
+				dumpOutput
+			else
+				echo " INFO: Success unsealing contents of file."
+				echo " INFO: Difference in files:"
+				diff input output
+			fi
+		fi
+	
+		rm -rf $CONTEXTFILE > /dev/null
+		echo "Saving the context of the 1st storage key using SaveKeyContext."
+		savekeycontext -hk $STORAGEKEY_NM_HANDLE -of $CONTEXTFILE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not save key context. Leaving this test."
+			dumpOutput
+			return 1
+		else
+			echo " INFO: Successfully saved key context."
+		fi
+	
+		echo "Trying to unseal the file now (again)."
+		rm -rf output
+		./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		if [ $? -ne 0 ]; then
+			echo " INFO: Command completed successfully."
+		else
+			echo " ERROR: Could unseal the file although key should not be there anymore"
+			dumpOutput
+		fi
+	
+		check_audit_digest
+	
+		echo "Evicting storage key ($STORAGEKEY_NM_HANDLE)."
+		evictkey -hk $STORAGEKEY_NM_HANDLE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not evict the storage key."
+			dumpOutput
+		else
+			echo " INFO: Successfully evicted key."
+			sync_auditing
+		fi
+	
+		echo "Trying to unseal the file now (again)."
+		rm -rf output
+		./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " INFO: Command completed successfully ($ERR)."
+		else
+			echo " ERROR: Could unsealing contents of file."
+			dumpOutput
+		fi
+	
+		echo "Loading previously stored key context into TPM."
+		loadkeycontext -if $CONTEXTFILE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load context into TPM. Leaving this test."
+			dumpOutput
+			return 1
+		else
+			echo " INFO: Successfully loaded context into the TPM."
+		fi
+	
+		echo "Trying to unseal the file now (again)."
+		rm -rf output
+		./unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file."
+			dumpOutput
+		else
+			echo " INFO: Success unsealing contents of file."
+			echo " INFO: Difference in files:"
+			diff input output
+		fi
+	
+		check_audit_digest
+
+	fi
+
+
+	#SaveAuthContext implemented?
+	checkOrdImplemented 0xb6
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo ""
+		echo " Skipping Save/LoadAuthContext since not supported by TPM"
+		echo ""
+	else
+		echo "Creating an OSAP (key=$STORAGEKEY_HANDLE) session."
+		session osap \
+			key $STORAGEKEY_HANDLE \
+			keypass $STORAGEKEY_PASSWORD  > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully opened OSAP session $ID."
+		else
+			echo " ERROR: Could not open OSAP session. Leaving test."
+			dumpOutput
+			return 1
+		fi
+
+
+		echo "Testing the OSAP (key) session $ID."
+		session osap \
+			key $STORAGEKEY_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Saving the OSAP (key) session $ID context."
+		saveauthcontext -ha $ID -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved OSAP session context."
+		else
+			echo " ERROR: Could not save OSAP session context."
+			dumpOutput
+		fi
+
+
+		echo "Testing the OSAP (key) session $ID."
+		session osap \
+			key $STORAGEKEY_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+
+		echo "Flushing OSAP (key) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+			echo " INFO: Successfully completed command."
+		elif [ $ERR -eq 0 ]; then
+			echo " ERROR: Could flush the OSAP session although it should be gone."
+		else
+			echo " WARN: Unexpected error code: $ERR."
+			dumpOutput
+		fi
+
+		echo "Loading the OSAP (key) session [$ID] into TPM."
+		loadauthcontext -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Testing the OSAP (key) session $ID."
+		session osap \
+			key $STORAGEKEY_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+			echo "  New ENONCE=$ENONCE"
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Flushing OSAP (key) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully flushed OSAP (key) session."
+		else
+			echo " ERROR: Error while flushing OSAP (key) session."
+			dumpOutput
+		fi
+
+		echo ""
+		doTestSetCapFlag "ReadSRKPub" \
+	                 $TPM_SET_PERM_FLAGS \
+	                 $TPM_PF_READSRKPUB \
+	                 $FALSE \
+	                 checkTPMReadSRKPub \
+	                 $OWNER_PASSWORD
+		echo "Setting public part of the SRK to be readable."
+		setcapability -pwdo $OWNER_PASSWORD \
+			-cap $TPM_SET_PERM_FLAGS \
+			-scap $TPM_PF_READSRKPUB \
+			-val $TRUE > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Public part of SRK is readable."
+		else
+			echo " ERROR: Could not make public part of SRK readable."
+		fi
+
+		echo ""
+		echo "Creating an OSAP (SRK) session."
+		session osap \
+			key $SRK_HANDLE \
+			keypass $SRK_PASSWORD  > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully opened OSAP session $ID."
+		else
+			echo " ERROR: Could not open OSAP session. Leaving test."
+			dumpOutput
+			return 1
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+
+		echo "Saving the OSAP (SRK) session $ID context using SaveAuthContext."
+		saveauthcontext -ha $ID -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved OSAP session context."
+		else
+			echo " ERROR: Could not save OSAP session context."
+			dumpOutput
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq $TPM_INVALID_AUTHHANDLE  -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+			echo " INFO: Successfully completed command."
+		elif [ $ERR -eq 0 ]; then
+			echo " ERROR: Could flush the OSAP session although it should be gone."
+		else
+			echo " WARN: Unexpected error code: $ERR."
+			dumpOutput
+		fi
+
+
+		echo "Loading the OSAP (SRK) session [$ID] into TPM."
+		loadauthcontext -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+		rm -rf osapcontext.bin
+
+		echo "Saving the OSAP (SRK) session $ID context using SaveContext."
+		savecontext -ha $ID \
+		            -rt $TPM_RT_AUTH \
+		            -la test \
+		            -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved OSAP session context."
+		else
+			echo " ERROR: Could not save OSAP session context."
+			dumpOutput
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+			echo " INFO: Successfully completed command."
+		elif [ $ERR -eq 0 ]; then
+			echo " ERROR: Could flush the OSAP session although it should be gone."
+		else
+			echo " WARN: Unexpected error code: $ERR."
+			dumpOutput
+		fi
+
+
+		echo "Loading the OSAP (SRK) session [$ID] into TPM."
+		loadcontext -keep -ha $SRK_HANDLE -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully flushed OSAP (SRK) session."
+		else
+			echo " ERROR: Error while flushing OSAP (SRK) session."
+			dumpOutput
+		fi
+
+
+
+		echo ""
+		echo "Creating an OSAP (SRK) session -- using TPM_ET_SRK."
+		session osap \
+			srkpass $SRK_PASSWORD  > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully opened OSAP session $ID."
+		else
+			echo " ERROR: Could not open OSAP session. Leaving test."
+			dumpOutput
+			return 1
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+
+		echo "Saving the OSAP (SRK) session $ID context using SaveAuthContext."
+		saveauthcontext -ha $ID -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved OSAP session context."
+		else
+			echo " ERROR: Could not save OSAP session context."
+			dumpOutput
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+			echo " INFO: Successfully completed command."
+		elif [ $ERR -eq 0 ]; then
+			echo " ERROR: Could flush the OSAP session although it should be gone."
+		else
+			echo " WARN: Unexpected error code: $ERR."
+			dumpOutput
+		fi
+
+
+		echo "Loading the OSAP (SRK) session [$ID] into TPM."
+		loadauthcontext -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+		rm -rf osapcontext.bin
+
+		echo "Saving the OSAP (SRK) session $ID context using SaveContext."
+		savecontext -ha $ID \
+		            -rt $TPM_RT_AUTH \
+		            -la test \
+		            -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved OSAP session context."
+		else
+			echo " ERROR: Could not save OSAP session context."
+			dumpOutput
+		fi
+
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+			echo " INFO: Successfully completed command."
+		elif [ $ERR -eq 0 ]; then
+			echo " ERROR: Could flush the OSAP session although it should be gone."
+		else
+			echo " WARN: Unexpected error code: $ERR."
+			dumpOutput
+		fi
+
+
+		echo "Loading the OSAP (SRK) session [$ID] into TPM."
+		loadcontext -keep -ha $SRK_HANDLE -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+
+		echo "Testing the OSAP (SRK) session $ID."
+		session osap \
+			key $SRK_HANDLE \
+			test $ID key $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+
+
+		echo "Flushing OSAP (SRK) session $ID."
+		flushspecific -ha $ID \
+			-rt $TPM_RT_AUTH > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully flushed OSAP (SRK) session."
+		else
+			echo " ERROR: Error while flushing OSAP (SRK) session."
+			dumpOutput
+		fi
+	fi
+}
+
+
+doAuthContextTest ()
+{
+	echo "Creating an OIAP session."
+	session oiap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened OIAP session $ID."
+	else
+		echo " ERROR: Could not open OIAP session. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OIAP session."
+	else
+		echo " ERROR: Could not use the OIAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the OIAP session context."
+	savecontext -ha $ID \
+		-rt $TPM_RT_AUTH \
+		-la test \
+		-of oiapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved OIAP session context."
+	else
+		echo " ERROR: Could not save OIAP session context."
+		dumpOutput
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OIAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Flushing OIAP session."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+		     $ERR -eq $TPM_BAD_PARAMETER ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could flush the OIAP session although it should be gone."
+	else
+		echo " WARN: Unexpected error code: $ERR."
+		dumpOutput
+	fi
+
+	echo "Loading OIAP session into TPM."
+	loadcontext -keep -ha $ID -if oiapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded the OIAP session."
+		NEW_HANDLE=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		if [ "$NEW_HANDLE" != "$ID" ]; then
+			echo " ERROR: Session handle has changed from $ID to $NEW_HANDLE"
+			ID=$NEW_HANDLE
+		fi
+	else
+		echo " ERROR: Could not load OIAP session."
+		dumpOutput
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OIAP session."
+	else
+		echo " ERROR: Could not use the OIAP session."
+		dumpOutput
+	fi
+
+	echo "Flushing OIAP session."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed the OIAP session."
+	else
+		echo " ERROR: Could not flush the OIAP session."
+		dumpOutput
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OIAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+
+	echo "Creating an OIAP session."
+	session oiap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened OIAP session $ID."
+	else
+		echo " ERROR: Could not open OIAP session. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OIAP session."
+	else
+		echo " ERROR: Could not use the OIAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the OIAP session context."
+	savecontext -ha $ID \
+		-rt $TPM_RT_AUTH \
+		-la test \
+		-of oiapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved OIAP session context."
+	else
+		echo " ERROR: Could not save OIAP session context."
+		dumpOutput
+	fi
+
+	echo "Getting context count of saved OIAP session."
+	getcontextcount -if oiapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		CONTEXT_COUNT=`cat run.out | gawk '{ print $2 }'`
+		echo " INFO: The context count of the OIAP session is $CONTEXT_COUNT."
+	else
+		echo " ERROR: Could not determine the context count."
+	fi
+
+	echo "Flushing the context count $CONTEXT_COUNT."
+	flushspecific -ha $CONTEXT_COUNT -rt $TPM_RT_CONTEXT > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed the context count."
+	else
+		echo " ERROR: Could not flush the context count."
+	fi
+
+	echo "Loading OIAP session into the TPM."
+	loadcontext -keep -ha $ID -if oiapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: Should not be able to load the context."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Testing the OIAP (owner) session."
+	session oiap \
+		owner $OWNER_PASSWORD \
+		test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OIAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	check_audit_digest
+
+	echo "Creating an OSAP (owner) session."
+	session osap owner $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened OSAP session $ID."
+	else
+		echo " ERROR: Could not open OSAP session. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+
+	echo "Testing the OSAP (owner) session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OSAP session."
+	else
+		echo " ERROR: Could not use the OSAP session."
+		dumpOutput
+	fi
+
+
+	echo "Saving the OSAP (owner) session context."
+	savecontext -ha $ID \
+		-rt $TPM_RT_AUTH \
+		-la test \
+		-of osapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved OSAP session context."
+	else
+		echo " ERROR: Could not save OSAP session context."
+		dumpOutput
+	fi
+
+
+	echo "Testing the OSAP (owner) session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+
+	echo "Flushing OSAP (owner) session."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+	     $ERR -eq $TPM_BAD_PARAMETER ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could flush the OSAP session although it should be gone."
+	else
+		echo " WARN: Unexpected error code: $ERR."
+		dumpOutput
+	fi
+
+
+	echo "Loading OSAP (owner) session into TPM."
+	loadcontext -keep -ha $ID -if osapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded the OSAP session."
+		NEW_HANDLE=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		if [ "$NEW_HANDLE" != "$ID" ]; then
+			echo " ERROR: Session handle has changed from $ID to $NEW_HANDLE"
+			ID=$NEW_HANDLE
+		fi
+	else
+		echo " ERROR: Could not load OSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing the OSAP (owner) session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OSAP session."
+	else
+		echo " ERROR: Could not use the OSAP session."
+		dumpOutput
+	fi
+	
+	#SaveAuthContext implemented?
+	checkOrdImplemented 0xb6
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo ""
+		echo " Skipping Save/LoadAuthContext since not supported by TPM"
+		echo ""
+	else
+		echo "Saving the OSAP session context using SaveAuthContext."
+		rm -rf osapcontext.bin
+		saveauthcontext -ha $ID -of osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved the OSAP session context."
+		else
+			echo " ERROR: Could not save the OSAP session context."
+		fi
+	
+	
+		echo "Testing the OSAP session."
+		session osap test $ID owner $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " ERROR: OSAP session could be used but should have been flushed."
+		else
+			echo " INFO: Successfully completed command."
+		fi
+	
+	
+		echo "Loading the OSAP session using LoadAuthContext."
+		loadauthcontext -if osapcontext.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+			echo " INFO: Successfully restored the OSAP session to handle $ID."
+		else
+			echo " ERROR: Could not restore the OSAP session."
+			dumpOutput
+		fi
+	
+	
+		echo "Testing the OSAP session."
+		session osap test $ID owner $ENONCE $SSECRET > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+			SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+			echo " INFO: Successfully used the OSAP session."
+		else
+			echo " ERROR: Could not use the OSAP session."
+			dumpOutput
+		fi
+	fi
+
+	echo "Flushing OSAP session."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed the OSAP session."
+	else
+		echo " ERROR: Could not flush the OSAP session."
+		dumpOutput
+	fi
+	
+	
+	echo "Testing the OSAP session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	check_audit_digest
+
+	echo "Creating an OSAP session."
+	session osap owner $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened OSAP session $ID."
+	else
+		echo " ERROR: Could not open OSAP session. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+
+	echo "Testing the OSAP session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OSAP session."
+	else
+		echo " ERROR: Could not use the OSAP session."
+		dumpOutput
+	fi
+
+
+	echo "Saving the OSAP session context."
+	savecontext -ha $ID \
+		-rt $TPM_RT_AUTH \
+		-la test \
+		-of osapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved OSAP session context."
+	else
+		echo " ERROR: Could not save OSAP session context."
+		dumpOutput
+	fi
+
+
+	echo "Determining the context count of the save key context."
+	getcontextcount -if osapcontext.bin >  run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		CONTEXT_COUNT=`cat run.out | gawk '{ print $2 }'`
+		echo " INFO: The context count is $CONTEXT_COUNT"
+	else
+		echo " ERROR: Could not determine the context count."
+		dumpOutput
+	fi
+
+
+	echo "Flushing the context count $CONTEXT_COUNT."
+	flushspecific -ha $CONTEXT_COUNT \
+		-rt $TPM_RT_CONTEXT > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed the context count."
+	else
+		echo " ERROR: Could not flush the context count."
+		dumpOutput
+	fi
+
+
+	echo "Loading OSAP session into TPM."
+	loadcontext -keep -ha $ID -if osapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Could load the OSAP session although context count was deleted."
+		dumpOutput
+	fi
+
+
+	echo "Testing the OSAP session."
+	session osap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: OSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Creating an OSAP session using operator keyhandle and auth."
+	session osap \
+		key $TPM_KH_OPERATOR \
+		keypass $TPM_OPERATOR_AUTH  > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " ERROR: Could open OSAP session with operator keyhandle."
+		flushspecific -ha $ID -rt $TPM_RT_AUTH > run.out
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+
+	check_audit_digest
+
+	echo ""
+	echo "Testing DSAP session now."
+	echo ""
+	doDelegationContextTest
+	check_audit_digest
+
+	echo ""
+	echo "Testing Transport session now."
+	echo ""
+	doTransportContextTest
+	check_audit_digest
+}
+

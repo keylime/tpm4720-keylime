@@ -1,0 +1,172 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_pcr 4702 2013-01-03 21:26:29Z kgoldman $				#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+doPCRTest ()
+{
+	PCRREGISTER=1
+	DATA=mmm
+	echo "Reading value of a PCR"
+	pcrread -ix $PCRREGISTER > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read PCR register $PCRREGISTER."
+		dumpOutput
+	else
+		PCRVALUE=`grep -E "Current" run.out | gawk '{print $6}'`
+		echo " INFO: Successfully read PCR register. $PCRVALUE"
+	fi
+
+	echo "Extending value of PCR register $PCRREGISTER"
+	calcfuturepcr -ix $PCRREGISTER -ic $DATA > run.out
+	NEWPCRVALUE=`grep -E "Future" run.out | gawk '{print $6}'`
+	extend -ix $PCRREGISTER -ic $DATA > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend future PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVALUE=`grep -E "New" run.out | gawk '{print $5}'`
+		if [ $NEWPCRVALUE == $PCRVALUE ]; then
+			echo " INFO: New PCR value of register $PCRREGISTER is correct."
+		else
+			echo " ERROR: New PCR of register $PCRREGISTER is incorrect."
+			echo "        $NEWPCRVALUE != $PCRVALUE"
+			dumpOutput
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Trying to reset PCR register 16"
+		pcrreset -ix 16 > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then	
+			echo " ERROR: Could not reset PCR register 16"
+			dumpOutput
+		else
+			echo " INFO: Successfully reset PCR register 16"
+		fi
+	fi
+
+	if [ "$TPM_TRANSPORT" == "1" ]; then
+		echo ""
+		echo " Turning TPM Transport usage off."
+		echo ""
+		TPM_TRANSPORT_REMEMBER="1"
+		TPM_TRANSPORT="0"
+	fi
+
+	echo "Using the sha command to extend the PCR."
+	calcfuturepcr -ix $PCRREGISTER -ic $DATA > run.out
+	NEWPCRVALUE=`grep -E "Future" run.out | gawk '{print $6}'`
+	sha -ix $PCRREGISTER -ic $DATA > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend future PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVALUE=`grep -E "New" run.out | gawk '{print $5}'`
+		if [ "$NEWPCRVALUE" == "$PCRVALUE" ]; then
+			echo " INFO: New PCR value of register $PCRREGISTER is correct."
+		else
+			echo " ERROR: New PCR of register $PCRREGISTER is incorrect."
+			echo "        $NEWPCRVALUE != $PCRVALUE"
+			dumpOutput
+		fi
+	fi
+
+	if [ "$TPM_TRANSPORT_REMEMBER" == "1" ]; then
+		echo ""
+		echo " Turning TPM Transport usage on."
+		echo ""
+		TPM_TRANSPORT_REMEMBER="0"
+		TPM_TRANSPORT="1"
+	fi
+
+	echo ""
+	getNumPCRS
+	IDX=$?
+	if [ "$IDX" != "0" ]; then
+		echo "Checking whether I can read PCRs beyond the number the TPM has."
+		pcrread -ix $IDX > run.out
+		ERR=$?
+		if [ $ERR -eq 3 -o \
+		     $ERR -eq 2 ]; then
+			echo " INFO: Successfully completed command ($ERR)."
+		elif [ $ERR -ne 0 ]; then
+			echo " WARN: Successfully completed command with unexpected return code $ERR"
+		else
+			echo " ERROR: Could read PCR at index $IDX with only $IDX PCRs available."
+		fi
+
+		echo "Checking whether I extend PCRs beyond the number the TPM has."
+		extend -ix $IDX -ic hello > run.out
+		if [ $ERR -eq 3 -o \
+		     $ERR -eq 2 ]; then
+			echo " INFO: Successfully completed command ($ERR)."
+		elif [ $ERR -ne 0 ]; then
+			echo " WARN: Successfully completed command with unexpected return code $ERR"
+		else
+			echo " ERROR: Could extend PCR at index $IDX with only $IDX PCRs available."
+		fi
+
+		TSTIDX=12345678
+		echo "Checking whether I can read PCRs beyond the number the TPM has."
+		pcrread -ix $TSTIDX > run.out
+		ERR=$?
+		if [ $ERR -eq 3 -o \
+		     $ERR -eq 2 ]; then
+			echo " INFO: Successfully completed command ($ERR)."
+		elif [ $ERR -ne 0 ]; then
+			echo " WARN: Successfully completed command with unexpected return code $ERR"
+		else
+			echo " ERROR: Could read PCR at index $TSTIDX with only $IDX PCRs available."
+		fi
+
+		echo "Checking whether I extend PCRs beyond the number the TPM has."
+		extend -ix $TSTIDX -ic hello > run.out
+		if [ $ERR -eq 3 -o \
+		     $ERR -eq 2 ]; then
+			echo " INFO: Successfully completed command ($ERR)."
+		elif [ $ERR -ne 0 ]; then
+			echo " WARN: Successfully completed command with unexpected return code $ERR"
+		else
+			echo " ERROR: Could extend PCR at index $TSTIDX with only $IDX PCRs available."
+		fi
+	else
+		echo " ERROR: Could not get number of PCRs of the TPM."
+	fi
+	
+}

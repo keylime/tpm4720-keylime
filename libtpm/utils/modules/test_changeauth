@@ -1,0 +1,137 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_changeauth 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test changing authority for a key
+doChangeKeyAuthTest ()
+{
+	echo ""
+	echo "Changing key authorization for the signing key."
+	chgauth -pwdp $SRK_PASSWORD \
+	             -hp $SRK_HANDLE \
+	             -if $SIGNINGKEY_FILENAME.key \
+	             -pwd $SIGNINGKEY_PASSWORD \
+	             -pwdn $DATAUSE_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not change key authorization."
+		dumpOutput
+	else
+		echo " INFO: Successfully changed key authorization."
+		echo "Reversing password changes."
+		chgauth -pwdp $SRK_PASSWORD \
+		             -hp $SRK_HANDLE \
+		             -if $SIGNINGKEY_FILENAME.key \
+		             -pwd $DATAUSE_PASSWORD \
+		             -pwdn $SIGNINGKEY_PASSWORD > run.out
+		if [ $? -ne 0 ]; then
+			echo "ERROR: Could not change password back."
+			dumpOutput
+		else
+			echo " INFO: Successfully changed password back to old password."
+		fi
+	fi
+}
+
+
+
+### Test for changing authority
+doChangeAuthTest ()
+{
+	echo ""
+	echo "Changing SRK authorization."
+	./chgtpmauth -pwdo $OWNER_PASSWORD -pwdn $DATAUSE_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not change SRK password."
+		dumpOutput
+	else
+		echo " INFO: Changed SRK password."
+		echo "Reversing SRK password changes."
+		./chgtpmauth -pwdo $OWNER_PASSWORD -pwdn $SRK_PASSWORD > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not change SRK password."
+			dumpOutput
+		else
+			echo " INFO: Successfully changed SRK password back to old password."
+		fi
+	fi
+}
+
+### Test for changing sealed data password
+doChangeSealAuthTest ()
+{
+	local NEW_DATAUSE_PASSWORD=newdatause
+	echo ""
+	echo "Changing password on sealed data."
+	sealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	        -pwdd $DATAUSE_PASSWORD \
+		-hk $STORAGEKEY_NM_HANDLE \
+		-if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Changing password on sealed data."
+		chgauth -pwdp $STORAGEKEY_NM_PASSWORD \
+		             -hp $STORAGEKEY_NM_HANDLE \
+		             -if outputa \
+		             -pwd $DATAUSE_PASSWORD \
+		             -pwdn $NEW_DATAUSE_PASSWORD > run.out
+		ERR=$?
+
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully changed password on sealed data."
+
+			echo "Trying to unseal contents of file."
+			rm -rf output
+			unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+			             -pwdd $NEW_DATAUSE_PASSWORD \
+			             -hk $STORAGEKEY_NM_HANDLE \
+			             -if outputa -of output > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not unseal contents of file ($ERR)."
+				dumpOutput
+			else
+				echo " INFO: Success unsealing contents of file."
+				echo " INFO: Difference in files:"
+				diff input output
+			fi
+		else
+			echo " ERROR: Could not change password on sealed data"
+		fi
+	fi
+}

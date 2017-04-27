@@ -1,0 +1,443 @@
+			TPM Compilation README
+		     Written by Ken Goldman
+		       IBM Thomas J. Watson Research Center
+	      $Id: README 4716 2013-12-24 20:47:44Z kgoldman $
+
+(c) Copyright IBM Corporation 2010:
+
+This documentation is provided with source code (Trusted Platform
+Module (TPM) subject to the following license:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the names of the IBM Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Unix
+----
+
+To create the TPM executable 'tpm_server' 
+
+	> make
+
+Use gnu make.
+
+These sample makefile's are included:
+
+	makefile-tpm		(standard TPM)
+        makefile-en-ac          (TPM with default enabled, activated)
+        makefile-ts             (TPM with TPM_Init disabled for TCG test suite)
+	makefile-freebl		(TPM using the FreeBL crypto library)
+	makefile-freebl-ts	(TPM using the FreeBL crypto library
+					with TPM_Init disabled for 
+					TCG test suite)
+
+	(makefile-common is not a sample makefile.  It is included by
+	the samples).
+
+Windows
+-------
+
+makefile.mak is a sample that can be used with MinGW
+makefile-ts.mak is a TPM with TPM_Init disabled for TCG test suite
+
+	http://sourceforge.net/projects/mingw/files/
+	http://mingw.org
+
+The linker requires the file applink.c.  See the OpenSSL FAQ at:
+	
+	http://www.openssl.org/support/faq.html#PROG2
+
+Crypto
+-------
+
+The TPM requires either Openssl or freebl for low level crypto operations.
+
+It has been tested with Openssl 0.9.8 and 1.0.0 (Linux and Windows) and
+freebl on Linux.	
+
+For Openssl Linux source, see 
+
+	http://www.openssl.org 
+
+For Openssl Windows binaries, see 
+
+	http://www.slproweb.com/products/Win32OpenSSL.html 
+
+To determine the OpenSSL version installed:
+
+	> openssl version
+
+Macros
+------
+
+The following compiler macros are used in the TPM software.
+
+CAUTION: TPM_TEST and TPM_DEBUG introduce security holes!
+
+		----------------------------
+		TPM Specification Variations
+		----------------------------
+
+TPM_V11		When defined, The TPM image implements TPM specification 1.1
+TPM_V12         When defined, The TPM image implements TPM specification 1.2
+
+                Exactly one of the two must be defined.
+		The 1.1 ordinal variations are not well tested.
+
+TPM_REVISION 	When defined, conform to the specified revision of
+		the TPM main specification.
+
+		Revision 116 and the latest revision are supported.
+		Revision 103 is supported.
+                Revision 94 is supported but not fully tested.
+		Revisions 62 and 85 are minimally supported.  
+
+		When not defined, conforms to the latest, possibly
+		unreleased revision
+
+TPM_PCCLIENT 	If defined, the TPM is compiled to conform to the PC
+		Client specification.  For example, pcrReset,
+		pcrResetLocal, and pcrExtendLocal values are changed.
+		PC Client NV indices are permitted.
+
+		If not defined, the TPM is compiled to conform to
+		the main specification.
+
+TPM_AES         When defined, The TPM uses AES for symmetric key operations
+TPM_DES         When defined, The TPM uses Triple DES for symmetric key 
+		operations
+
+                Exactly one of the two must be defined.  The TCG has
+		deprecated TPM_DES, so this option is not being
+		maintained.
+
+TPM_NOMAINTENANCE 
+		When not defined, the TPM implements the maintenance 
+		ordinals.
+
+		When defined, the TPM does not implement maintenance.
+
+		Not implementing maintenance saves NV space for the 
+		maintenance key as well as some code space.
+
+
+		------------------------------
+		TPM Capability Variations
+		------------------------------
+
+These values can override the source code default values using
+-DTPM_xxx=nnn in the makefile.
+
+Higher values add to TPM capabilities but consume more volatile
+and/or non-volatile memory.
+
+TPM_RSA_KEY_LENGTH_MAX
+
+		Limits the maximum RSA key length.
+	
+		Default: 2048.
+
+		Restrictions: Must be a multiple of 16.  Must be at
+		least 2048.
+
+TPM_MIN_AUTH_SESSIONS
+
+		Defines the number of authorization (OIAP, OSAP, DSAP)
+		session slots.
+
+		Default: 3
+
+		Restrictions:  Must be at least 3.
+
+TPM_MIN_TRANS_SESSIONS
+
+		Defines the number of transport session slots.
+
+		Default: 3
+
+		Restrictions:  Must be at least 3.
+
+TPM_MIN_COUNTERS
+
+		Defines the number of monotonic counters
+
+		Default: 4
+
+		Restrictions:  Must be at least 4.
+
+TPM_MIN_SESSION_LIST
+
+		Defines the number of saved session slots.
+
+		Default: 16
+
+		Restrictions: Must be at least 16.
+
+TPM_NUM_FAMILY_TABLE_ENTRY_MIN
+
+		Defines the number of family table entries
+
+		Default: 8
+
+		Restrictions: Must be at least 8.
+
+TPM_NUM_DELEGATE_TABLE_ENTRY_MIN
+
+		Defines the number of delegate table rows
+
+		Default: 2
+
+		Restrictions: Must be at least 2.
+
+TPM_MIN_DAA_SESSIONS
+
+		Defines the number of DAA session slots.
+
+		Default: 1
+
+		Restrictions: Must be at least 1.
+
+TPM_KEY_HANDLES
+
+		Defines the number of key slots.
+
+		Default: 3
+
+		The TCG minimum is 2.  Since it must also be two more
+		than the number of owner evict keys, the default is 3
+		so that one owner evict key slot is available.
+
+		Restrictions: Must be at least 2.  Must be 2 more than
+		TPM_OWNER_EVICT_KEY_HANDLES.
+
+TPM_OWNER_EVICT_KEY_HANDLES
+
+		Defines the number of owner evict key slots.
+
+		Default: 1
+
+		The TCG minimum is 0.
+
+		Restrictions: Must be at least 2 less than
+		TPM_KEY_HANDLES.
+
+TPM_MAX_NV_SPACE
+
+		Defines the maximum size of the NV space that the TPM
+		will use to store its entire non-volatile state.  This
+		includes the 'permanent' structures, owner evict keys,
+		and NV defined space.  It does NOT include NV space
+		used by TPM_SaveState.
+
+		The calculation for this is complex, related to the
+		number of owner evict key slots, the platform
+		minimum requirements for NV defined space, etc.
+
+		Default: Platform specific.  See tpm_nvram_const.h
+
+TPM_MAX_NV_DEFINED_SIZE
+
+		Defines the maximum size of the NV defined space, the
+		NV indexes created by TPM_NV_DefineSpace.
+
+		Default: Platform specific.  See tpm_nvram_const.h
+
+TPM_MAX_SAVESTATE_SPACE
+
+		Defines the maximum size of the NV space that the TPM
+		will use to store volatile state with TPM_SaveState.
+
+		The calculation for this is complex, related to the
+		number of key and session slots, slots, number of
+		PCRs, etc.
+
+		Default: Platform specific.  See tpm_nv_const.h
+		
+TPM_MAX_VOLATILESTATE_SPACE
+
+		Defines the maximum size of the NV space that the TPM
+		will use to store the complete volatile state, a
+		superset of TPM_SaveState.
+
+TPM_BUFFER_MAX
+
+		The TPM communication I/O buffer.  The minimum TPM
+                command or response packet size is about 1200 bytes.
+
+                This affects the input buffer size for e.g.,
+                TPM_SHA1Update data and the output buffer for e.g.,
+                TPM_GetRandom.
+
+		Default: 4 kbytes
+
+TPM_ALLOC_MAX
+		
+		This is the absolute maximum size that the TPM will
+		allocate in one malloc or realloc call.  It's purpose
+		is simply to restrict resource consumption in event of
+		a denial of service attack.
+
+		There are some gross compiler checks for a size
+		sufficient to accommodate non-volatile and volatile
+		state serialization.
+
+		Default: 64 kbytes
+
+		------------------------------
+		TPM Command/Response Interface
+		------------------------------
+
+TPM_UNIX_DOMAIN_SOCKET
+		When defined, the TPM uses Unix domain sockets.
+
+		When not defined, the TPM uses TCP/IP sockets.
+
+		------------------------------
+		TPM Host Platform Environment
+		------------------------------
+
+TPM_POSIX	When defined, the TPM is compiled for a Posix platform.
+
+TPM_WINDOWS	When defined, the TPM is compiled for a Windows platform.
+
+TPM_SYSTEM_P	Build a TPM for the IBM System P hypervisor platform.
+		Use the IBM System P flash file system.
+
+		Exactly one of the three must be defined.
+
+TPM_NV_DISK     The TPM stores data on a disk file system using standard C
+		calls.
+
+
+		------------------------------
+		Fail-over and Migration support
+		------------------------------
+
+TPM_VOLATILE_LOAD  
+		
+		If the volatile state exists at TPM initialization,
+		load it.
+
+TPM_VOLATILE_STORE 
+
+		Automatically save the volatile state after every
+		command to permit fail-over.  The alternative is to
+		call the TPM_VolatileAll_NVStore() function (directly
+		or through a command extension.
+
+TPM_VOLATILE_TEST 
+
+		This macro is for test and debug.  If
+		TPM_VOLATILE_STORE is also set, after every command,
+		the TPM state is initialized and reloaded, testing the
+		store/load for a wide variety of conditions.
+
+		If the state is restored correctly, the macro will
+		have no effect other than to cause the TPM to run
+		slowly and to greatly increase the trace size.
+
+
+		------------------------------
+		TPM "Manufacturing' Options
+		------------------------------
+
+It is possible to 'ship' the TPM with default state other than the TCG
+standard using these flags:
+
+TPM_ENABLE_ACTIVATE
+		
+		If defined, the TPM is 'shipped' (when run for the
+		first time) enabled and activated.  This is opposite
+		from the TCG standard, but saves a reboot to activate.
+		It is applicable to servers, which do not have the
+		same privacy concerns as clients.
+
+TPM_PP_CMD_ENABLE	
+		
+		If defined, the the TPM is 'shipped' (when run for the
+		first time) with
+		TPM_PERMANENT_FLAGS->physicalPresenceCMDEnable TRUE.
+		This is opposite from the TCG standard
+
+
+		------------------------------
+		TPM Debug Aids
+		------------------------------
+
+TPM_DEBUG	
+
+		If defined, the TPM prints debug information to
+		stdout.  If not defined, the TPM is silent.
+
+		To reduce the log when running long tests, a subset of
+		the files may be compiled with TPM_DEBUG defined.
+
+                This is a security hole, as debug information includes
+		TPM secrets.  It should not be defined for secure
+		operation.
+
+TPM_TEST	
+
+		If defined, enables the TPM_Init ordinal, allowing
+		regression test code to reboot the TPM.
+
+		This is a security hole, and should not be defined for
+		secure operation.
+
+
+		------------------------------
+		TPM Hardware Interface
+		------------------------------
+
+TPM_IO_LOCALITY   
+
+		If defined, a platform specific function
+		TPM_IO_GetLocality() must be supplied.  The function
+		is called before each ordinal is processed, and must
+		indicate the current locality.
+
+		If not defined, a stub function is used that sets
+		the locality to 0.
+
+TPM_IO_PHYSICAL_PRESENCE
+		  
+		If defined, a platform specific function
+		TPM_IO_GetPhysicalPresence() must be supplied.  The
+		function must indicate the current state of the
+		hardware physical presence signal.
+
+		If not defined, a stub function is used that sets the
+		physical presence to FALSE.
+
+TPM_IO_GPIO	If defined, platform specific functions
+		TPM_IO_GPIO_Write() and TPM_IO_GPIO_Read() must be
+		supplied.
+
+		If not defined, the stub function TPM_IO_GPIO_Write()
+		traces the write data, and TPM_IO_GPIO_Read() sets the
+		read data to zero.

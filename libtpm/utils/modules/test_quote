@@ -1,0 +1,326 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_quote 4702 2013-01-03 21:26:29Z kgoldman $				#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test quoting of PCRs
+doQuoting ()
+{
+	echo ""
+	echo "Quoting some PCRs; using signing key"
+	quote -hk $SIGNINGKEY_HANDLE -bm 1f -pwdk $SIGNINGKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs; using signing key with INFO signature scheme"
+	quote -hk $SIGNINGKEY_INFO_HANDLE -bm 1f -pwdk $SIGNINGKEY_INFO_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not quote PCRS or signature is bad."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs and verifying signature was successful"
+	fi
+
+	echo "Quoting some PCRs; using signing key w/o pwd"
+	quote -hk $SIGNINGKEY_NOPWD_HANDLE -bm 1f > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs; using legacy key"
+	quote -hk $LEGACYKEY_HANDLE -bm 1f -pwdk $LEGACYKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs; using legacy key w/o pwd"
+	quote -hk $LEGACYKEY_NOPWD_HANDLE -bm 1f > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs; using storage key"
+	quote -hk $STORAGEKEY_HANDLE -bm 1f -pwdk $STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using storage key w/o pwd"
+	quote -hk $STORAGEKEY_NOPWD_HANDLE -bm 1f > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using binding key"
+	quote -hk $BINDINGKEY_HANDLE -bm 1f -pwdk $BINDINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using binding key w/o pwd"
+	quote -hk $BINDINGKEY_NOPWD_HANDLE -bm 1f > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using migration key"
+	quote -hk $MIGRATIONKEY_HANDLE -bm 1f -pwdk $MIGRATIONKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using migration key w/o pwd"
+	quote -hk $MIGRATIONKEY_NOPWD_HANDLE -bm 1f  > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+}
+
+doQuoting2() 
+{
+	echo "Quoting some PCRs using quote2 and signing key"
+	quote2 -hk $SIGNINGKEY_HANDLE -bm 1f -pwdk $SIGNINGKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and signing key; with version info in resp."
+	quote2 -vinfo -hk $SIGNINGKEY_HANDLE -bm 1f -pwdk $SIGNINGKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and signing key w/o pwd"
+	quote2 -hk $SIGNINGKEY_NOPWD_HANDLE -bm 1f > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and signing key w/o pwd; w/ version info"
+	quote2 -vinfo -hk $SIGNINGKEY_NOPWD_HANDLE -bm 1f > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and signing key with INFO sig. scheme"
+	quote2 -hk $SIGNINGKEY_INFO_HANDLE -bm 1f -pwdk $SIGNINGKEY_INFO_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs or validating signature"
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and signing key with INFO sig. scheme"
+	echo " with version information in response"
+	quote2 -vinfo -hk $SIGNINGKEY_INFO_HANDLE -bm 1f -pwdk $SIGNINGKEY_INFO_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs or validating signature"
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and CMK signing key"
+	quote2 -hk $CMK_SIGNINGKEY_HANDLE -bm 1f -pwdk $CMK_SIGNINGKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and CMK signing key; w/ version info"
+	quote2 -vinfo -hk $CMK_SIGNINGKEY_HANDLE -bm 1f -pwdk $CMK_SIGNINGKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and legacy key"
+	quote2 -hk $LEGACYKEY_HANDLE -bm 1f -pwdk $LEGACYKEY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and CMK legacy key"
+	quote2 -hk $CMK_LEGACYKEY_HANDLE -bm 1f -pwdk $CMK_LEGACYKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2 and CMK legacy key; w/ version info"
+	quote2 -vinfo -hk $CMK_LEGACYKEY_HANDLE -bm 1f -pwdk $CMK_LEGACYKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+
+	echo "Quoting some PCRs using quote2; using storage key"
+	quote2 -hk $STORAGEKEY_HANDLE -bm 1f -pwdk $STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using CMK storage key"
+	quote2 -hk $CMK_STORAGEKEY_HANDLE -bm 1f -pwdk $CMK_STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using binding key"
+	quote2 -hk $BINDINGKEY_HANDLE -bm 1f -pwdk $BINDINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using CMK binding key"
+	quote2 -hk $CMK_BINDINGKEY_HANDLE -bm 1f -pwdk $CMK_BINDINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using migration key"
+	quote2 -hk $MIGRATIONKEY_HANDLE -bm 1f -pwdk $MIGRATIONKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+	echo "Quoting some PCRs; using CMK migration key"
+	quote2 -hk $CMK_MIGRATIONKEY_HANDLE -bm 1f -pwdk $CMK_MIGRATIONKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INAPPROPRIATE_SIG -o \
+	     $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+}

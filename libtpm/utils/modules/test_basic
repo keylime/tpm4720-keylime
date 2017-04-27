@@ -1,0 +1,341 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_basic 4702 2013-01-03 21:26:29Z kgoldman $				#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Take over a TPM. Try to create the endorsement key pair and take
+### ownership. If this fails try the passwords that we know.
+takeTPM ()
+{
+	NO_SRK_PASSWORD=0
+	check_audit_digest
+	./tpmbios > run.out
+
+	if [ $? -ne 0 ]; then
+		pcrread -ix 0 > run.out
+		if [ $? -ne 0 -a $? -ne 10 ]; then
+			echo "TPM seems to be in incorrect state or down. Ending test."
+			echo "Please (re-)start the TPM and press 'enter'"
+			read enter
+			./tpmbios > run.out
+			if [ $? -ne 0 ]; then
+				pcrread -ix 0 > run.out
+				if [ $? -ne 0 ]; then
+					echo " ERROR: something is wrong with the TPM at $TPM_SERVER_NAME:$TPM_SERVER_PORT!"
+					echo "        Terminating test."
+					dumpOutput
+					if [ $INTERACTIVE -ne 0 ]; then
+						echo "Press enter to continue."
+						read enter
+					fi
+					return 1
+				fi
+			fi
+		fi
+	fi
+
+	echo "Checking whether this device has 'FIPS' rating"
+	checkTPMFIPS
+	RES=$?
+	if [ "$RES" == "1" ]; then
+		echo " INFO: This is a FIPS-rated device. Enabling AES encryption"
+		echo "       for authentication data."
+		TPM_ET_ENCRYPT_AES="1"
+	else
+		echo " INFO: This is not a FIPS-rated device."
+	fi
+
+	createTransportKeys $1
+
+	echo "Set presence and activated TPM"
+
+	echo "Creating endorsement key."
+	./createek > run.out
+	RES=$?
+	if [ $RES -eq $TPM_DISABLED_CMD ]; then
+		echo " INFO: Endorsement key already exists."
+	elif [ $RES -ne 0 ]; then
+		echo " WARN: Endorsement key already exists?"
+	else 
+		echo " INFO: Created endorsement key."
+		echo "Reading the public endorsement key."
+		getpubek > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully read the public endorsement key"
+		else
+			echo " ERROR: Could not read the public endorsement key."
+		fi
+	fi
+
+	setownerinstall > run.out
+
+	RES=$?
+	if [ $RES -ne 0 ]; then
+		if [ $RES -eq $TPM_BAD_PRESENCE ]; then
+			physicalpresence -s > run.out
+			setownerinstall > run.out
+			RES=$?
+		fi
+	fi
+
+	if [ $RES -ne 0 ]; then
+		echo " ERROR: Cannot install owner. TPM already has an owner?"
+		echo "        Could not establish physical presence?"
+		dumpOutput
+	else
+		echo "Trying to take ownership of TPM. Keysize=$3."
+		if [ "$TPM_VERSION" != "11" ]; then
+			takeown -v12 -sz $3 -pwdo $1 -pwds $2 > run.out
+		else
+			takeown -sz $3 -pwdo $1 -pwds $2 > run.out
+		fi
+		RES=$?
+
+		if [  $RES -eq $TPM_DISABLED_CMD -o \
+		      $RES -eq $TPM_OWNER_SET ]; then
+			if [ "$TPM_VERSION" != "11" ]; then
+				checkTPMhasOwner
+				RES=$?
+			else
+				RES=0
+			fi
+			if [ $RES -eq 1 ]; then
+				echo " INFO: TPM already has an owner."
+			else
+				echo " WARN: TPM might already have an owner."
+			fi
+			echo "Trying the owner password I know."
+			chgtpmauth -own -pwdo $1 -pwdn $1 > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Don't know the owner password for the TPM. Ending test."
+				echo "        You should clear the owner from the TPM."
+				dumpOutput
+				if [ $INTERACTIVE -ne 0 ]; then
+					echo "Press enter to continue"
+					read enter
+				fi
+				return 1
+			else
+				echo " INFO: I know the owner password!"
+			fi
+
+			echo "Setting SRK password."
+			chgtpmauth -pwdo $1 -pwdn $2 > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not set the SRK password. Ending test."
+				echo "        You should clear the owner from the TPM."
+				dumpOutput
+				if [ $INTERACTIVE -ne 0 ]; then
+					echo "Press enter to continue."
+					read enter
+				fi
+				return 1
+			else
+				echo " INFO: Set my SRK password."
+			fi
+
+			if [ "$TPM_VERSION" != "11" ]; then
+				enable_auditing $1
+
+				echo "Reading public part of SRK."
+				ownerreadinternalpub \
+					-hk $SRK_HANDLE -of srk.pub -pwdo $1 > run.out
+				ERR=$?
+				if [ $ERR -ne 0 ]; then
+					echo " ERROR: Could not read public part of SRK."
+					dumpOutput
+				else
+					echo " INFO: Successfully read public part of SRK."
+				fi
+
+				check_audit_digest
+
+				echo "Reading public part of EK."
+				ownerreadinternalpub \
+					-hk $EK_HANDLE -of ek.pub -pwdo $1 > run.out
+				ERR=$?
+				if [ $ERR -ne 0 ]; then
+					echo " ERROR: Could not read public part of EK."
+					dumpOutput
+				else
+					echo " INFO: Successfully read public part of EK."
+				fi
+
+				check_audit_digest
+			else
+				echo ""
+				echo "This is a 1.1 test. Not reading public part of SRK and EK"
+			fi
+		elif [ $RES -ne 0 ]; then
+			echo " ERROR: Could not properly take ownership of TPM."
+			dumpOutput
+		else
+			echo " INFO: Successfully took ownership."
+
+			clearDelegationState
+
+			createTransportKeys $1
+
+			if [ "$TPM_VERSION" != "11" ]; then
+				enable_auditing $1
+			fi
+
+			echo "Reading the public endorsement key."
+			getpubek > run.out
+			ERR=$?
+			if [ $ERR -eq $TPM_DISABLED_CMD ]; then
+				echo " INFO: Command completed successfully."
+			else
+				echo " ERROR: Unexpected result: $ERR"
+			fi
+
+			if [ "$TPM_VERSION" != "11" ]; then
+				check_audit_digest
+			fi
+		fi
+	fi
+
+	createTransportKeys $1
+}
+
+
+takeTPM_noSRKPwd ()
+{
+	NO_SRK_PASSWORD=1
+	echo "Clearing ownership and doing tests with no SRK password set"
+	./clearown -pwdo $OWNER_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not give up ownership. Ending test."
+		dumpOutput
+		return 1
+	else
+		echo "Taking ownership of TPM with no SRK password. Keysize=$1"
+		./tpmbios -n > run.out
+		./setownerinstall > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: setownerinstall returned error. Ending test."
+			dumpOutput
+			return 1
+		fi
+		./takeown -sz $1 -pwdo $OWNER_PASSWORD > run.out
+		if [ $? -ne 0 ]; then
+			echo "  ERROR: could not take ownership. Ending test."
+			dumpOutput
+			return 1
+		else
+			echo " INFO: Successfully took ownership."
+		fi
+		clearDelegationState
+
+		enable_auditing $OWNER_PASSWORD
+	fi
+	createTransportKeys $OWNER_PASSWORD
+
+	check_audit_digest
+
+	return 0
+}
+
+
+takeTPM_revEK ()
+{
+	echo ""
+	echo "Please terminate the TPM at $TPM_SERVER_NAME:$TPM_SERVER_PORT and"
+	echo "remove all permanent state of that TPM. Then restart the TPM."
+	echo "Will conduct test with a revocable endorsement key."
+	echo "Press enter to continue."
+	read enter
+
+	echo ""
+	./tpmbios > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not 'prime' the TPM. Skipping this test."
+		dumpOutput
+		return 1
+	else
+		echo ""
+		echo "Please restart the TPM now."
+		echo "Press enter to continue."
+		read enter
+		./tpmbios > run.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not properly communicate with the TPM."
+			echo "        Skipping this test."
+			dumpOutput
+			return 1
+		else
+			echo "Creating revocable endorsement key pair."
+			./createrevek -pwdk $TRUST_PASSWORD > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not create the EK key pair. Leaving test."
+				dumpOutput
+				return 1
+			else
+				echo " INFO: Successfully created revocable EK pair."
+			fi
+		fi
+	fi
+}
+
+
+clearDelegationState()
+{
+	rm -rf /tmp/.delegation-$TPM_INSTANCE
+}
+
+# Wait for the lock to disengage
+waitLock ()
+{
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Resetting the lock value after attack."
+		resetlockvalue -pwdo $OWNER_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully reset lock value"
+		else
+			echo " ERROR: Could not reset lock value ($ERR)"
+			dumpOutput
+		fi
+	fi
+}
+
+dumpOutput ()
+{
+	echo "-------------------------------"
+	cat run.out
+	echo "-------------------------------"
+}

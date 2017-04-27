@@ -1,0 +1,2054 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_seal 4702 2013-01-03 21:26:29Z kgoldman $				#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test sealing a file
+doSealFileTest ()
+{
+	echo ""
+	echo "Sealing contents of file 'input'. Using EK."
+	sealfile -pwdd $DATAUSE_PASSWORD \
+	         -hk $EK_HANDLE \
+	         -if input -of outputa > run.out
+	if [ $? -eq 0 ]; then
+		echo " ERROR: Could seal with the endorsement key!"
+	else
+		echo " INFO: Command completed successfully."
+	fi
+
+	echo "Sealing contents of file 'input'. Using 1st storage key $STORAGEKEY_NM_HANDLE."
+	sealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file with key $STORAGEKEY_NM_HANDLE."
+		rm -rf output
+		unsealfile -pwdk $STORAGEKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	echo "Sealing contents of file 'input'. Using storage key w/o pwd $STORAGEKEY_NOPWD_HANDLE."
+	sealfile \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NOPWD_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+		listkeys
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file with key $STORAGEKEY_NOPWD_HANDLE."
+		rm -rf output
+		unsealfile \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NOPWD_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	### Sealing with legacy key should not work.
+	echo "Sealing contents of file 'input'. Using non-mig. legacy key $LEGACYKEY_NM_HANDLE."
+	sealfile -pwdk $LEGACYKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $LEGACYKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -eq 36 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Unexpected return code from sealfile ($?)."
+		dumpOutput
+		echo "Trying to unseal contents of file with non-mig. legacy key $LEGACYKEY_NM_HANDLE."
+		rm -rf output
+		unsealfile -pwdk $LEGACYKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $LEGACYKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	### Sealing with binding key should not work.
+	echo "Sealing contents of file 'input'. Using non-mig. binding key $BINDINGKEY_NM_HANDLE."
+	sealfile -pwdk $BINDINGKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $BINDINGKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -eq 36 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Unexpected return code from sealfile ($?)."
+		dumpOutput
+		echo "Trying to unseal contents of file with non-mig. legacy key $BINDINGKEY_NM_HANDLE."
+		rm -rf output
+		unsealfile -pwdk $BINDINGKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $BINDINGKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	### Sealing with signing key should not work.
+	echo "Sealing contents of file 'input'. Using non-mig. signing key $SIGNINGKEY_NM_HANDLE."
+	sealfile -pwdk $SIGNINGKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $SIGNINGKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -eq 36 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Unexpected return code from sealfile ($?)."
+		dumpOutput
+		echo "Trying to unseal contents of file with non-mig. legacy key $SIGNINGKEY_NM_HANDLE."
+		rm -rf output
+		unsealfile -pwdk $SIGNINGKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $SIGNINGKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+
+	### Sealing with signing key should not work.
+	echo "Sealing contents of file 'input'. Using non-mig. migration  key $MIGRATIONKEY_NM_HANDLE."
+	sealfile -pwdk $MIGRATIONKEY_NM_PASSWORD \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $MIGRATIONKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -eq 36 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Unexpected return code from sealfile ($?)."
+		dumpOutput
+		echo "Trying to unseal contents of file with non-mig. legacy key $MIGRATIONKEY_NM_HANDLE."
+		rm -rf output
+		unsealfile -pwdk $MIGRATIONKEY_NM_PASSWORD \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $MIGRATIONKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unsealing contents of file."
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+
+}
+
+
+doSealFileTest_PCRLocking ()
+{
+	MESSAGE=message
+	echo ""
+	echo "Trying to seal a file with PCR locking. Using no data password."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test."
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully ($ERR)."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test."
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo
+	echo
+
+	echo "Sealing file against future PCR value of this register."
+	echo " Using TPM_PCR_INFO_LONG."
+	sealfile2 \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -vlong \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully ($ERR)."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully ($ERR)."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo
+
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	echo " Using TPM_PCR_INFO_LONG."
+	sealfile2 -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -vlong \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully ($ERR)."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+
+	echo "Trying to seal a file with PCR locking (2 registers)."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL10=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL10"
+	fi
+
+	calcfuturepcr -ix 5 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL5=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL5"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 5 $PCRVAL5 \
+	            -ix 10 $PCRVAL10 \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending 1st PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL10=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL10" 
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending 2nd PCR register (PCR 5) to new state."
+	extend -ix 5 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL5=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL5" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR5=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		pcrread -ix 5 > run.out
+		PCR5=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR  5: $PCR5"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+	
+}
+
+
+doSealFileTest_PCRLocking_noSRKPwd ()
+{
+	MESSAGE=message
+	echo ""
+	echo "Trying to seal a file with PCR locking. Using no data password."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test."
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+	waitLock
+
+	echo "Trying to seal a file with PCR locking. WITH data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 -pwdd $DATAUSE_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+
+	echo "Trying to seal a file with PCR locking (2 registers)."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL10=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL10"
+	fi
+
+	calcfuturepcr -ix 5 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL5=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL5"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealfile2 -pwdd $DATAUSE_PASSWORD \
+	            -ix 5 $PCRVAL5 \
+	            -ix 10 $PCRVAL10 \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending 1st PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL10=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL10" 
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	else
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	fi
+
+	echo "Extending 2nd PCR (PCR 5) register to new state."
+	extend -ix 5 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL5=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL5" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file ($ERR)."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		pcrread -ix 5 > run.out
+		PCR5=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR  5: $PCR5"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+	
+}
+
+
+doSealxFileTest_PCRLocking ()
+{
+	MESSAGE=message
+	echo ""
+	echo "Trying to seal a file with PCR locking using sealx. No data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register. Using sealx."
+	sealxfile \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file. ($ERR)"
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password, no key pwd"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $STORAGEKEY_NOPWD_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NOPWD_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NOPWD_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+
+	echo "Trying to seal a file with PCR locking (2 registers)."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL10=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL10"
+	fi
+
+	calcfuturepcr -ix 5 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL5=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL5"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 5 $PCRVAL5 \
+	            -ix 10 $PCRVAL10 \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 1st PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL10=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL10" 
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 2nd PCR register (PCR 5) to new state."
+	extend -ix 5 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL5=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL5" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		pcrread -ix 5 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR  5: $PCR5"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+	echo
+	echo
+
+	echo "Sealing file against NO PCR. Using sealx. No data-use password"
+	sealxfile \
+	            -pwdk $SRK_PASSWORD \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Sealing file against NO PCR. Using sealx. With data-use password"
+	sealxfile   -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Unsealing file."
+	rm -rf output
+	unsealxfile  -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+	
+}
+
+doSealxFileTest_PCRLocking_AES_CTR ()
+{
+	if [ "$TPM_IS_FIPS" == "0" ]; then
+		getcapability -cap $TPM_CAP_AUTH_ENCRYPT -scap 9 > run.out
+		ERR=`grep "Result for" run.out | gawk '{print $9}' `
+		if [ "$ERR" == "TRUE" ]; then
+			echo ""
+			echo "Switching to AUTHDATA encryption with AES."
+			echo ""
+			TPM_ET_ENCRYPT_AES=1
+		else
+			return
+		fi
+	else
+		#Already ran that same test before...
+		return
+	fi
+	MESSAGE=message
+	echo ""
+	echo "Trying to seal a file with PCR locking using sealx. No data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register. Using sealx."
+	sealxfile \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension using XOR."
+	TPM_ET_ENCRYPT_AES=0
+
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file. ($ERR)"
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" == "0" ]; then
+			echo " ERROR: Files MUST not be equal!"
+		fi
+	fi
+
+	echo "Unsealing file after PCR extension using AES CTR."
+	TPM_ET_ENCRYPT_AES=1
+
+	rm -rf output
+	unsealxfile \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not unseal file. ($ERR)"
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password, no key pwd"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $STORAGEKEY_NOPWD_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NOPWD_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $STORAGEKEY_NOPWD_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+
+	echo "Trying to seal a file with PCR locking (2 registers)."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL10=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL10"
+	fi
+
+	calcfuturepcr -ix 5 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL5=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL5"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -pwdk $SRK_PASSWORD \
+	            -ix 5 $PCRVAL5 \
+	            -ix 10 $PCRVAL10 \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 1st PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL10=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL10" 
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 2nd PCR (PCR 5) register to new state."
+	extend -ix 5 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL5=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL5" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -pwdk $SRK_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		pcrread -ix 5 > run.out
+		PCR5=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR  5: $PCR5"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+	if [ "$TPM_IS_FIPS" == "0" ]; then
+		echo ""
+		echo "Turning off Seal Data encryption with AES."
+		echo ""
+		TPM_ET_ENCRYPT_AES=$REMEMBER_TPM_ET_ENCRYPT_AES
+	fi
+	
+}
+
+
+
+
+doSealxFileTest_PCRLocking_noSRKPwd ()
+{
+	MESSAGE=message
+	echo ""
+	echo "Trying to seal a file with PCR locking using sealx. No data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register. Using sealx."
+	sealxfile \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+	echo "Trying to seal a file with PCR locking. WITH data password"
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -ix 10 $PCRVAL \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+
+
+
+	echo "Trying to seal a file with PCR locking (2 registers)."
+	echo "Calculating future value of PCR register after change."
+	calcfuturepcr -ix 10 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL10=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL10"
+	fi
+
+	calcfuturepcr -ix 5 -ic $MESSAGE > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not calculate future PCR Value. Leaving this test"
+		dumpOutput
+	else
+		PCRVAL5=`grep -E "Future" run.out | gawk '{ print $6 }'`
+		echo " INFO: Future PCR value after change will be:$PCRVAL5"
+	fi
+
+	echo "Sealing file against future PCR value of this register."
+	sealxfile -pwdd $DATAUSE_PASSWORD \
+	            -ix 5 $PCRVAL5 \
+	            -ix 10 $PCRVAL10 \
+	            -hk $SRK_HANDLE -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not seal file against future value."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed file."
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 1st PCR register to new state."
+	extend -ix 10 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL10=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL10" 
+	fi
+
+	echo "Trying to unseal file at present state."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+		echo " INFO: Command completed successfully."
+		waitLock
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could unseal file at present state!"
+		dumpOutput
+	else
+		echo " ERROR: Unexpected error code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Extending 2nd PCR (PCR 5) register to new state."
+	extend -ix 5 -ic $MESSAGE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVAL5=`grep -E "New value" run.out | gawk '{ print $5 }'`
+		echo "       New value is: $PCRVAL5" 
+	fi
+
+	echo "Unsealing file after PCR extension."
+	rm -rf output
+	unsealxfile -pwdd $DATAUSE_PASSWORD \
+	             -hk $SRK_HANDLE \
+	             -if outputa -of output > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not unseal file."
+		pcrread -ix 10 > run.out
+		PCR10=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR 10: $PCR10"
+		pcrread -ix 5 > run.out
+		PCR5=`cat run.out | grep Current | gawk '{ print $6 }'`
+		echo "        Current value of PCR  5: $PCR5"
+		dumpOutput
+	else
+		echo " INFO: Successfully unsealed file."
+		diff input output > /dev/null
+		RES=$?
+		if [ "$RES" != "0" ]; then
+			echo " ERROR: Files MUST be equal!"
+		fi
+	fi
+	
+}
+
+
+
+doSealFileTest_noPwd ()
+{
+	if [ $SECOND_STORAGEKEY_NOPWD_HANDLE -a \
+	     $SECOND_STORAGEKEY_NOPWD_HANDLE != "" ]; then
+		echo "Sealing file with storage key without password."
+		sealfile -pwdd $DATAUSE_PASSWORD \
+		           -hk $SECOND_STORAGEKEY_NOPWD_HANDLE \
+		           -if input -of outputa > run.out
+		if [ $? -ne 0 ]; then 
+			echo " ERROR: Could not seal file with this key."
+			dumpOutput
+		else
+			echo " INFO: Successfully sealed file with this key."
+			echo "Unsealing file with this key."
+			rm -rf output
+			unsealfile -pwdd $DATAUSE_PASSWORD \
+			             -hk $SECOND_STORAGEKEY_NOPWD_HANDLE \
+			             -if outputa -of output > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not unseal file."
+				dumpOutput
+			else
+				echo " INFO: Successfully unsealed file."
+				echo " INFO: Differences between the files:"
+				diff input output > /dev/null
+				RES=$?
+				if [ "$RES" != "0" ]; then
+					echo " ERROR: Files MUST be equal!"
+				fi
+			fi
+		fi
+	fi
+}

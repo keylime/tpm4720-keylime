@@ -1,0 +1,155 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_eviction 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test Key eviction
+doEvictionTest ()
+{
+	echo ""
+	echo "Evicting a key."
+	./listkeys > keys.txt
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not list keys."
+		dumpOutput
+	else
+		echo " INFO: Listed keys."
+		KEY=`grep "Key handle 00" keys.txt | gawk '{print $4}'`
+		if [ -z "$KEY" ]; then
+			echo " INFO: No key to evict."
+		else
+			echo "Will evict key with handle 0x$KEY."
+			evictkey -hk $KEY > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not evict key."
+				dumpOutput
+			else
+				echo " INFO: Evicted key."
+			fi
+		fi
+	fi
+
+	check_audit_digest
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Evicting a key using 'flushspecific'."
+		./listkeys > keys.txt
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not list keys."
+			dumpOutput
+		else
+			echo " INFO: Listed keys."
+			KEY=`grep "Key handle 00" keys.txt | gawk '{print $4}'`
+			if [ -z $KEY ]; then
+				echo " INFO: No key to evict..." 
+			else
+				echo "Will evict key with handle 0x$KEY."
+				flushspecific -ha $KEY -rt $TPM_RT_KEY > run.out
+				if [ $? -ne 0 ]; then
+					echo " ERROR: Could not evict key."
+					dumpOutput
+				else
+					echo " INFO: Evicted key."
+				fi
+			fi
+		fi
+	fi
+
+	check_audit_digest
+
+	echo "Evicting all remaining keys."
+	evictkey -all > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not evict all keys."
+		dumpOutput
+	else
+		echo " INFO: Evicted all keys."
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo ""
+		echo "Reading number of 2048 bit keys that can be loaded into the TPM."
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_KEYS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not read this property."
+		else
+			numkeys=`grep "Result for" run.out | gawk '{ print strtonum($9) }'`
+			echo " INFO: $numkeys 2048 bit keys fit into the TPM."
+
+			# Load this amount of keys into the TPM
+			export TPM_NO_KEY_SWAP=1
+			echo "Loading $numkeys keys into the TPM."
+
+			let i=0
+			while [ $i -lt $numkeys ]; do
+				loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+				        -ik $LEGACYKEY_FILENAME.key \
+				        -pwdp $SRK_PASSWORD > loadkey.out
+				ERR=$?
+				if [ $ERR -ne 0 ]; then
+					echo " ERROR: The $i-th key did not fit."
+					break
+				fi
+				let i=i+1
+			done
+
+			if [ $i -eq $numkeys ]; then
+				echo " INFO: Test was successful."
+				echo "Attempting to load one more key,"
+				loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+				        -ik $LEGACYKEY_FILENAME.key \
+				        -pwdp $SRK_PASSWORD > loadkey.out
+				ERR=$?
+				if [ $ERR -eq 0 ]; then
+					echo " ERROR: Could load one more key than what should fit."
+				else
+					echo " INFO: Good, key did not fit."
+				fi
+			fi
+			
+			echo "Evicting all keys."
+			evictkey -all > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not evict all keys."
+				dumpOutput
+			else
+				echo " INFO: Evicted all keys."
+			fi
+
+			export TPM_NO_KEY_SWAP=0
+		fi
+	fi
+}

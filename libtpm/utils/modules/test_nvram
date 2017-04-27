@@ -1,0 +1,2229 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_nvram 4702 2013-01-03 21:26:29Z kgoldman $				#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Perform tests on the NVRAM functions
+doNVRAMTest ()
+{
+	echo ""
+	echo "Enabling authentication for NVRAM."
+### MUST NOT provider owner password. This would not work with the password
+	./nv_definespace \
+	            -in ffffffff \
+	            -sz 0 \
+	            > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully enabled memory authentication."
+	fi
+
+	### INDEX_GOOD SIZE PERMISSION TEXT BAD_INDEX
+	### PERMISSION for _sub1 MUST be 0x40004!
+	doNVRAMTest_sub1 00000001 10 0x40004 TestText12 22 
+	doNVRAMTest_sub1 00000010 10 0x40004 TestText12 22 
+	doNVRAMTest_sub1 00000004 10 0x40004 TestText12 22
+}
+
+### Perform tests on the NVRAM functions
+doNVRAMTest_noOwner_Part1 ()
+{
+
+	### INDEX_GOOD SIZE PERMISSION TEXT BAD_INDEX
+	### PERMISSION for _sub1 MUST be 0x10001 here!!!
+	doNVRAMTest_noOwner_sub1 00000002 10 0x10001 TestText12 22 
+	if [ $? -eq 2 ]; then
+		return 2
+	fi
+	doNVRAMTest_noOwner_sub1 00000012 10 0x10001 TestText12 22 
+	if [ $? -eq 2 ]; then
+		return 2
+	fi
+	doNVRAMTest_noOwner_sub1 00000001 10 0x10001 TestText12 22
+	if [ $? -eq 2 ]; then
+		return 2
+	fi
+
+	return 0
+}
+
+doNVRAMTest_noOwner_Part2 ()
+{
+	takeTPM $OWNER_PASSWORD $SRK_PASSWORD $KEYSIZE_ST
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Cannot release memory areas since no ownership"
+		dumpOutput
+		return 1
+	else
+		doNVRAMTest_releaseSpace 00000002
+		doNVRAMTest_releaseSpace 00000012
+		doNVRAMTest_releaseSpace 00000001
+	fi
+}
+
+
+
+doNVRAMTest_sub1 ()
+{
+	INDEX_GOOD=$1
+	SIZE=$2
+	PERM=$3
+	TEXT=$4
+	INDEX_BAD=$5
+
+	echo ""
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX_GOOD does not exist, yet."
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo XYZ$OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 1 ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Unexpected return code $ERR."
+	fi
+
+	checkDALogic $TPM_ET_OWNER
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining NV-RAM space. Index=$INDEX_GOOD size=$SIZE, permissions=$PERM"
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $INDEX_GOOD \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully defined memory area."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX_GOOD does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space is available."
+	fi
+
+	echo "Writing Test test into memory area. Using owner pwd."
+	./nv_writevalue -pwdo $OWNER_PASSWORD \
+	                -in $INDEX_GOOD \
+	                -ic $TEXT > run.out
+	if [ $? -eq 0 ]; then
+		echo " ERROR: Could write into memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Writing Test test into memory area. Using area pwd."
+	./nv_writevalue -pwdd $MEMORY_PASSWORD \
+	                -in $INDEX_GOOD \
+	                -ic $TEXT > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write into memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote into memory area."
+	fi
+
+	echo "Reading complete text from area. Using owner pwd."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX_GOOD \
+	               -sz $SIZE \
+	               -off 0 \
+	               > run.out
+	if [ $? -eq 0 ]; then
+		echo " ERROR: Could read from memory area."
+		dumpOutput
+	else
+		echo " INFO: Command completed successfully."
+	fi
+
+	echo "Reading complete text from area. Using area pwd."
+	./nv_readvalue -pwdd $MEMORY_PASSWORD \
+	               -in $INDEX_GOOD \
+	               -sz $SIZE \
+	               -off 0 \
+	               > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully read from memory area."
+	fi
+
+	echo "Reading text from area starting at offset 1. Using area pwd."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 9 \
+	               -off 1 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory area."
+		dumpOutput
+	else
+		OUTPUT=`grep -E "Text" run.out | gawk '{print $2}'`
+		echo " INFO: Read the following text: $OUTPUT"
+	fi
+
+	echo "Reading text from area starting at offset 10, reading 1 byte."
+	echo "Using area password."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 1 \
+	               -off 10 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne $TPM_NO_SPACE ]; then
+		echo " ERROR: Unexpected error."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command:"
+	fi
+
+	echo "Reading text from area starting at offset 0, reading 11 bytes."
+	echo "Using area password."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 11 \
+	               -off 0 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne $TPM_NO_SPACE ]; then
+		echo " ERROR: Unexpected error."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Trying to write text to undefined index $INDEX_BAD."
+	echo "Using area password."
+	./nv_writevalue \
+	               -in $INDEX_BAD \
+	               -pwdd $MEMORY_PASSWORD \
+	               -ic Test > run.out
+	ERR=$?
+	if [ $ERR -ne $TPM_BADINDEX -a \
+             $ERR -ne $TPM_BAD_PARAMETER -a \
+	     $ERR -ne $TPM_FAIL ]; then
+		echo " ERROR: Unexpected error code $ERR"
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Trying to read text from undefined index $INDEX_BAD."
+	echo "Using area password."
+	./nv_readvalue \
+	               -in $INDEX_BAD \
+	               -sz 1 \
+	               -off 0 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -ne $TPM_BADINDEX -a \
+	     $ERR -ne $TPM_BAD_PARAMETER -a \
+	     $ERR -ne $TPM_FAIL  ]; then
+		echo " ERROR: Unexpected error code $ERR"
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Trying to delete memory area."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX_GOOD \
+	                 -sz 0 \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not delete memory area."
+		dumpOutput
+	else
+		echo " INFO: successfully deleted memory area."
+	fi
+
+
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted"
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+
+	echo "Reading from deleted memory area."
+	echo "Using area password."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 1 \
+	               -off 0 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Could read from deleted memory area."
+		dumpOutput
+	fi
+}
+
+
+doNVRAMTest_noOwner_sub1 ()
+{
+	INDEX_GOOD=$1
+	SIZE=$2
+	PERM=$3
+	TEXT=$4
+	INDEX_BAD=$5
+	
+	echo ""
+	echo "Doing test with NV-RAM without TPM owner."
+
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX_GOOD does not exist"
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining NV-RAM space. Index=$INDEX_GOOD size=$SIZE, permissions=$PERM"
+	./nv_definespace \
+	            -in $INDEX_GOOD \
+	            -sz $SIZE \
+	            -per $PERM \
+	            > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_MAXNVWRITES ]; then
+		echo " ERROR: Could not define memory without being owner!"
+		echo "        ** You have to remove all state from the TPM first to run this test."
+		dumpOutput
+		return 2
+	elif [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not define memory area!"
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory area."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX_GOOD does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+
+	echo "Writing Test test into memory area."
+	./nv_writevalue  \
+	                -in $INDEX_GOOD \
+	                \
+	                -ic $TEXT > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write into memory area. Error code= $?"
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote into memory area."
+	fi
+
+	echo "Reading complete text from area."
+	./nv_readvalue  \
+	               -in $INDEX_GOOD \
+	               -sz $SIZE \
+	               -off 0 \
+	               > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory area: $?"
+		dumpOutput
+	else
+		OUTPUT=`grep -E "Text" run.out | gawk '{print $2}'`
+		echo " INFO: Read the following text: $OUTPUT"
+	fi
+
+	echo "Reading text from area starting at offset 1."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 9 \
+	               -off 1 \
+	               > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory area: $?"
+		dumpOutput
+	else
+		OUTPUT=`grep -E "Text" run.out | gawk '{print $2}'`
+		echo " INFO: Read the following text: $OUTPUT"
+	fi
+
+	echo "Reading text from area starting at offset 11, reading 1 byte."
+	./nv_readvalue \
+	               -in $INDEX_GOOD \
+	               -sz 1 \
+	               -off 11 \
+	               > run.out
+	if [ $? -ne $TPM_NO_SPACE ]; then
+		echo " ERROR: Unexpected error code : $?"
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command:"
+	fi
+
+	echo "Reading text from area starting at offset 0, reading 11 bytes."
+	./nv_readvalue  \
+	               -in $INDEX_GOOD \
+	               -sz 11 \
+	               -off 0 \
+	               > run.out
+	if [ $? -ne $TPM_NO_SPACE ]; then
+		echo " ERROR: Unexpected error."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Trying to write text to undefined index."
+	./nv_writevalue \
+	               -in $INDEX_BAD \
+	               \
+	               -ic Test > run.out
+	ERR=$?
+	if [ $ERR -ne $TPM_BADINDEX -a \
+	     $ERR -ne $TPM_FAIL ]; then
+		echo " ERROR: Unexpected error ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Trying to read text from undefined index."
+	./nv_readvalue \
+	               -in $INDEX_BAD \
+	               -sz 1 \
+	               -off 0 \
+	               > run.out
+	ERR=$?
+	if [ $ERR -ne $TPM_BADINDEX -a \
+	     $ERR -ne $TPM_FAIL ]; then
+		echo " ERROR: Unexpected error ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+}
+
+
+doNVRAMTest_releaseSpace ()
+{
+	INDEX_GOOD=$1
+	echo "Trying to delete memory area."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX_GOOD \
+	                 -sz 0 \
+	                 > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not delete memory area."
+		dumpOutput
+	else
+		echo " INFO: successfully deleted memory area."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX_GOOD exists."
+	checkNVIndexAvailable $INDEX_GOOD
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+	echo "Reading from deleted memory area."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX_GOOD \
+	               -sz 1 \
+	               -off 0 \
+	               > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_BADINDEX ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+}
+
+### Perform first part of NVRAM function test; needs restart of the TPM 
+### in between to get Part2 running properly
+doNVRAMTest2_Part1 ()
+{
+	INDEX=00000020
+	PERM=20002
+	TEXT=test_text1
+	SIZE=20
+	echo ""
+	echo "Running first part of 2 part NV RAM test that requires restart"
+	echo "of the TPM."
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining memory with owner permissions."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz $SIZE \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory with owner permissions."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory."
+	fi
+
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space has been created."
+	fi
+
+
+	echo "Writing to memory with owner permissions."
+	./nv_writevalue -pwdo $OWNER_PASSWORD \
+	                -in $INDEX \
+	                -ic $TEXT > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory: $?"
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Reading from memory with owner permissions."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX \
+	               -sz $SIZE \
+	               -off 0 > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory!"
+		dumpOutput
+	else
+		echo " INFO: Successfully read from memory."
+	fi
+
+
+
+	echo "Trying redefine the memory area to delete it"
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz 0 \
+	                 -per 2000 \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not redefine memory area. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Could redefine memory area to size 0."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM still exists."
+		dumpOutput
+	fi
+
+	echo "Trying to read from deleted memory area."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX \
+	               -sz 1 \
+	               -off 0 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " INFO: Could not read from deleted memory area."
+	else
+		echo " ERROR: Could read from deleted memory area."
+		dumpOutput
+	fi
+
+
+###
+###
+###
+	PERM=21000
+	SIZE=00000010
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining memory with WRITEALL permission. Index=$INDEX"
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz $SIZE \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory with WRITE_ALL permissions."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+
+	echo "Writing to memory with WRITEALL permissions."
+	./nv_writevalue \
+	                -in $INDEX \
+	                \
+	                -ic $TEXT > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory!"
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Writing not enough text to memory with WRITEALL permissions."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -off 1 \
+	                \
+	                -ic test > run.out
+	if [ $? -eq $TPM_NOT_FULLWRITE ]; then
+		echo " INFO: Command completed successfully"
+	else
+		echo " ERROR: Unexpected error code: $?"
+		dumpOutput
+	fi
+
+	echo "Reading from memory with owner permissions."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX \
+	               -sz $SIZE \
+	               -off 0 > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory!"
+		dumpOutput
+	else
+		echo " INFO: Successfully read from memory."
+	fi
+
+	echo "Trying redefine the memory area to delete it"
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz 0 \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not redefine memory area. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Could redefine memory area to size 0."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+
+	echo "Trying to read from deleted memory area."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX \
+	               -sz 1 \
+	               -off 0 \
+	               -pwdd $MEMORY_PASSWORD > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " INFO: Could not read from deleted memory area."
+	else
+		echo " ERROR: Could read from deleted memory area."
+		dumpOutput
+	fi
+	
+	
+
+###
+###	Define memory at indices 10,11,12 with different permissions.
+###	Bring them into a state that further reads/writes are not
+###	successful anymore and complete the test in part 2
+
+	INDEX=00000010
+	PERM=24000
+	SIZE=10
+	echo ""
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining space with index 10 with WRITE_STCLEAR perm."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz $SIZE \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory area. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory at index $INDEX"
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+
+	echo "Writing test text to memory area index $INDEX."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic TEXT	> run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Writing 0-sized text to memory to lock it."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic ""	> run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Writing test text to memory area index $INDEX which is locked."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic $TEXT > run.out
+	if [ $? -eq $TPM_AREA_LOCKED ]; then
+		echo " INFO: Successfully completed command. Could not write to memory."
+	else
+		echo " ERROR: Unexpected error code : $?"
+		dumpOutput
+	fi
+
+###
+###
+###
+	INDEX=00000011
+	PERM=80000004
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " ERROR: NV-RAM space already exists."
+		dumpOutput
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining space with index $INDEX with READ_STCLEAR permissions."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz $SIZE \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory area. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory at index $INDEX"
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+
+	echo "Writing test text to memory area index $INDEX (no password)."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic TEXT	> run.out
+	if [ $? -eq 0 ]; then
+		echo " ERROR: Could write to this memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Writing test text to memory area index $INDEX (with password)."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic TEXT	\
+	                -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+
+	echo "Trying to read from read-once memory area."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 10 \
+	               -off 0 \
+	               > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from read-once memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully read from read-once memory."
+	fi
+
+	echo "Trying to lock read-once memory area."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 0 \
+	               > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not lock read-once memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully locked read-once memory."
+	fi
+
+	echo "Trying 2nd time read from read-once memory area."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 10 \
+	               -off 0 \
+	               > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_DISABLED_CMD ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Unexpected return code: $?"
+		dumpOutput
+	fi
+
+###
+###
+###
+
+	INDEX=00000012
+	PERM=28000
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Checking availability of NV-RAM space of size=$SIZE, permissions=$PERM"
+	nv_definespace -pwdo $OWNER_PASSWORD \
+	            -in $TPM_NV_INDEX_TRIAL \
+	            -sz $SIZE \
+	            -per $PERM \
+	            -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Memory area cannot be allocated."
+		dumpOutput
+	else
+		echo " INFO: Memory is available."
+	fi
+
+	echo "Defining space with index $INDEX with GLOBAL_LOCK permissions."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz $SIZE \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not define memory area. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully defined memory at index $INDEX"
+	fi
+
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " ERROR: NV-RAM space $INDEX does not exist."
+		dumpOutput
+	else
+		echo " INFO: NV-RAM space exists."
+	fi
+
+
+	echo "Writing test text to memory area index $INDEX."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic TEXT	> run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Writing text to index 0 to lock all memory areas."
+	./nv_writevalue \
+	                -in 00000000 \
+	                -ic ""	> run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not write to memory."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote to memory."
+	fi
+
+	echo "Writing test text to memory area index $INDEX which is locked."
+	./nv_writevalue \
+	                -in $INDEX \
+	                -ic TEXT	> run.out
+	if [ $? -ne 0 ]; then
+		echo " INFO: Successfully completed command. Could not write to memory."
+	else
+		echo " ERROR: Could write to locked memory."
+		dumpOutput
+	fi
+	
+}
+
+### 2nd part of multi-part NV RAM test. 
+###
+doNVRAMTest2_Part2 ()
+{
+	INDEX=00000010
+	PERM=24000
+	echo "Reading from memory area index $INDEX."
+	./nv_readvalue -pwdo $OWNER_PASSWORD \
+	               -in $INDEX \
+	               -sz 10 \
+	               -off 0 \
+	               > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from memory. ($?)"
+		dumpOutput
+	else
+		echo " INFO: Successfully read from memory."
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space $INDEX does not exist."
+	else
+		echo " INFO: NV-RAM space already exists."
+	fi
+
+	echo "Deleting memory area at index $INDEX."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz 0 \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not delete memory with index $INDEX."
+		dumpOutput
+	else
+		echo " INFO: Successfully deleted memory with index $INDEX"
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+
+###	Try reading from the read-once memory. Should work once.
+###	Then delete it.
+
+	INDEX=00000011
+	PERM=80000004
+	echo "Trying to read from read-once memory area with index $INDEX."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 10 \
+	               -off 0 \
+	               > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read from read-once memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully read from read-once memory."
+	fi
+
+	echo "Setting read-lock on read-once memory area with index $INDEX by reading"
+	echo "0 bytes."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 0 \
+	               -off 0 \
+	               > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not set lock on read-once memory area."
+		dumpOutput
+	else
+		echo " INFO: Successfully set lock on read-once memory."
+	fi
+
+	echo "Trying 2nd time read from read-once memory area."
+	./nv_readvalue \
+	               -in $INDEX \
+	               -sz 10 \
+	               -off 0 \
+	               > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_DISABLED_CMD ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Unexpected return code: $ERR"
+		dumpOutput
+	fi
+
+	echo "Deleting read-once memory."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz 0 \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not delete memory with index $INDEX."
+		dumpOutput
+	else
+		echo " INFO: Successfully deleted memory with index $INDEX"
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+###
+###
+	INDEX=00000012
+	PERM=28000
+	echo "Deleting space with index $INDEX with GLOBAL_LOCK permissions."
+	./nv_definespace -pwdo $OWNER_PASSWORD \
+	                 -in $INDEX \
+	                 -sz 0 \
+	                 -per $PERM \
+	                 -pwdd $MEMORY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not delete memory with index $INDEX."
+		dumpOutput
+	else
+		echo " INFO: Successfully deleted memory with index $INDEX"
+	fi
+
+	echo "Checking capabilities whether NV-RAM space $INDEX exists."
+	checkNVIndexAvailable $INDEX
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		echo " INFO: NV-RAM space has been deleted."
+	else
+		echo " ERROR: NV-RAM space still exists."
+		dumpOutput
+	fi
+
+}
+
+
+doDIRTest ()
+{
+	MESSAGE="Test"
+	INDEX=0x00000000
+	EXP_RESULT="640ab2bae07bedc4c163f679a746f7ab7fb5d1fa"
+
+	echo ""
+	echo "Writing to DIR index $INDEX."
+	dirwrite -pwdo $OWNER_PASSWORD -in $INDEX -ic $MESSAGE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not write to DIR index $INDEX. Leaving this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully wrote to DIR index $INDEX."
+	fi
+
+	echo "Reading from DIR index $INDEX."
+	dirread -in $INDEX > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not read from DIR index $INDEX."
+		dumpOutput
+	else
+		RES=`cat run.out | grep "Content of" | gawk '{ print $5 }'`
+		if [ "$RES" == "$EXP_RESULT" ]; then
+			echo " INFO: Successfully read from DIR index $INDEX."
+		else
+			echo " ERROR: Reading ok, but wrong content in DIR index $INDEX."
+		fi
+	fi
+
+
+	INDEX=0x00000001
+	echo ""
+	echo "Writing to DIR index $INDEX."
+	dirwrite -pwdo $OWNER_PASSWORD -in $INDEX -ic $MESSAGE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Could write to DIR at index $INDEX"
+		dumpOutput
+	fi
+
+	echo "Reading from DIR index $INDEX."
+	dirread -in $INDEX > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Command completed successfully."
+	else
+		echo " ERROR: Could read from DIR at index $INDEX."
+		dumpOutput
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		INDEX=0x00000000
+		MESSAGE="12345678901234567890"
+		EXP_RESULT="7e0a1242bd8ef9044f27dca45f5f72ad5a1125bf"
+		echo ""
+		echo "Writing to DIR index $INDEX."
+		dirwrite -pwdo $OWNER_PASSWORD -in $INDEX -ic $MESSAGE > run.out
+		ERR=$?
+
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not write to DIR index $INDEX. Leaving this test."
+			dumpOutput
+			return 1
+		else
+			echo " INFO: Successfully wrote to DIR index $INDEX."
+		fi
+
+		echo "Reading DIR $INDEX using NV_RAM function."
+		nv_readvalue -in $TPM_NV_INDEX_DIR -sz 20 > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not read from NV_RAM index $TPM_NV_INDEX_DIR."
+			dumpOutput
+		else
+			RES=`cat run.out | sed "s/.*://"| tr -d "\n" | \
+			     gawk '{ i=1; while (i < 24) { \
+			           printf "%s", $i; i++ } \
+			     }'`
+			if [ "$RES" == "$EXP_RESULT" ]; then
+				echo " INFO: Successfully read from NV_RAM index $TPM_NV_INDEX_DIR."
+			else
+				echo " ERROR: Wrong value read from NV_RAM index $TPM_NV_INDEX_DIR."
+				echo "  Expected: $EXP_RESULT"
+				echo "  Actual  : $RES"
+			fi
+		fi
+
+		EXP_RESULT="3132333435363738393031323334353637383930"
+		echo "Writing data to NV_RAM index $TPM_NV_INDEX_DIR."
+		nv_writevalue -pwdo $OWNER_PASSWORD \
+		              -ic $MESSAGE -in $TPM_NV_INDEX_DIR > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote to NV_RAM index $TPM_NV_INDEX_DIR."
+		else
+			echo " ERROR: Error writing to NV_RAM index $TPM_NV_INDEX_DIR."
+			dumpOutput
+		fi
+
+		echo "Reading data from NV_RAM index $TPM_NV_INDEX_DIR"
+		nv_readvalue -in $TPM_NV_INDEX_DIR -sz 20 > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not read from NV_RAM index $TPM_NV_INDEX_DIR."
+			dumpOutput
+		else
+			RES=`cat run.out | sed "s/.*://"| tr -d "\n" | \
+			     gawk '{ i=1; while (i < 21) { \
+			           printf "%s", $i; i++ } \
+			     }'`
+			if [ "$RES" == "$EXP_RESULT" ]; then
+				echo " INFO: Successfully read from NV_RAM index $TPM_NV_INDEX_DIR."
+			else
+				echo " ERROR: Wrong value read from NV_RAM index $TPM_NV_INDEX_DIR."
+				echo "  Expected: $EXP_RESULT"
+				echo "  Actual  : $RES"
+			fi
+		fi
+
+		echo "Reading data from DIR index $INDEX"
+		dirread -in $INDEX > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Error while reading from DIR index $INDEX."
+			dumpOutput
+		else
+			RES=`cat run.out | grep "Content of" | gawk '{print $5}'`
+			if [ "$RES" == "$EXP_RESULT" ]; then
+				echo " INFO: Successfully read expected content from DIR $INDEX"
+			else
+				echo " ERROR: Wrong value read from DIR $INDEX."
+			fi
+		fi
+
+
+		echo "Partial write to NV_RAM index $TPM_NV_INDEX_DIR."
+		nv_writevalue -pwdo $OWNER_PASSWORD -ic Test -in $TPM_NV_INDEX_DIR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " INFO: Command completed successfully."
+		else
+			echo " ERROR: Could do a partial write (!=20 bytes)."
+			dumpOutput
+		fi
+
+
+		echo "Reading data from DIR index $INDEX expecting no change"
+		dirread -in $INDEX > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Error while reading from DIR index $INDEX."
+			dumpOutput
+		else
+			RES=`cat run.out | grep "Content of" | gawk '{print $5}'`
+			if [ "$RES" == "$EXP_RESULT" ]; then
+				echo " INFO: Successfully read expected content from DIR $INDEX"
+			else
+				echo " ERROR: Wrong value read from DIR $INDEX."
+			fi
+		fi
+
+
+		echo "Zero length write to NV_RAM index $TPM_NV_INDEX_DIR."
+		nv_writevalue -pwdo $OWNER_PASSWORD -in $TPM_NV_INDEX_DIR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Error doing zero length write to DIR though NV write."
+			dumpOutput
+		else
+			echo " INFO: Successfully wrote zero length to DIR."
+		fi
+
+
+		echo "Reading data from DIR index $INDEX expecting no change"
+		dirread -in $INDEX > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Error while reading from DIR index $INDEX."
+			dumpOutput
+		else
+			RES=`cat run.out | grep "Content of" | gawk '{print $5}'`
+			if [ "$RES" == "$EXP_RESULT" ]; then
+				echo " INFO: Successfully read expected content from DIR $INDEX"
+			else
+				echo " ERROR: Wrong value read from DIR $INDEX."
+			fi
+		fi
+
+		echo "Setting the permanent flag NVLocked to True."
+		./setcapability -pwdo $OWNER_PASSWORD \
+				-cap $TPM_SET_PERM_FLAGS \
+				-scap $TPM_PF_NV_LOCKED \
+				-val $TRUE > run.out
+
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " INFO: Successfully set NVLocked flag."
+		else
+			echo " ERROR: Could not set NVLocked flag. Ending test"
+			return 1
+		fi
+
+		echo "Writing data to NV_RAM index $TPM_NV_INDEX_DIR without password."
+		nv_writevalue -ic $MESSAGE -in $TPM_NV_INDEX_DIR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " INFO: Command completed successfully: $ERR."
+		else
+			echo " ERROR: Could write to NVRAM without password under NVLocked condition."
+			dumpOutput
+		fi
+
+		echo "Writing data to NV_RAM index $TPM_NV_INDEX_DIR using owner password."
+		nv_writevalue -pwdo $OWNER_PASSWORD \
+		              -ic $MESSAGE \
+		              -in $TPM_NV_INDEX_DIR > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote to NV_RAM index $TPM_NV_INDEX_DIR."
+		else
+			echo " ERROR: Error writing to NV_RAM index $TPM_NV_INDEX_DIR."
+			dumpOutput
+		fi
+	fi
+}
+
+# Create four owner authorized indexes
+#	00000010 
+#	00000011 PER_READ_STCLEAR
+#	00000012			PER_WRITE_STCLEAR
+#	00000013 PER_READ_STCLEAR	PER_WRITE_STCLEAR
+
+createSTClearIndexes()
+{
+    echo "Defining NV-RAM space. Index=10 size=1, permissions=00020002"
+    ./nv_definespace -pwdo $OWNER_PASSWORD \
+	-in 00000010 \
+	-sz 1 \
+	-per 00020002 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully defined memory area."
+    fi
+    
+    echo "Defining NV-RAM space. Index=11 size=1, permissions=80020002 (READ_STCLEAR)"
+    ./nv_definespace -pwdo $OWNER_PASSWORD \
+	-in 00000011 \
+	-sz 1 \
+	-per 80020002 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully defined memory area."
+    fi
+    echo "Defining NV-RAM space. Index=12 size=1, permissions=00024002 (WRITE_STCEAR)"
+    ./nv_definespace -pwdo $OWNER_PASSWORD \
+	-in 00000012 \
+	-sz 1 \
+	-per 00024002 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully defined memory area."
+    fi
+    echo "Defining NV-RAM space. Index=13 size=1, permissions=80024002 (R/W_STCLEAR)"
+    ./nv_definespace -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	-sz 1 \
+	-per 80024002 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully defined memory area."
+    fi
+}
+
+#
+# Write all 4 indexes
+#
+#	If the first parameter is 1, a '1' is written.  
+#	If the first parameter is 0, no data is written, sets bWriteSTClear
+#	If the first parameter is E, a '1' is written and errors are expected
+#	
+#
+
+doNVWrite()
+{
+    # parameter 1 writes and reads 1 byte
+    if [ "$1" == "1" ]; then
+	DASH_D="-ic 1"
+    # parameter 0 writes and reads 0 bytes
+    elif [ "$1" == "0" ]; then
+	DASH_D=""
+    # parameter E writes and reads 1 byte but expects errors
+    elif [ "$1" == "E" ]; then
+	DASH_D="-ic 1"
+    fi
+
+    echo "Writing Index 10"
+    ./nv_writevalue -pwdo $OWNER_PASSWORD \
+	-in 00000010 \
+	$DASH_D > run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not write into memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully wrote into memory area 10 $DASH_D"
+    fi
+    
+    echo "Writing Index 11"
+    ./nv_writevalue -pwdo $OWNER_PASSWORD \
+	-in 00000011 \
+	$DASH_D > run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not write into memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully wrote into memory area 11 $DASH_D"
+    fi
+    
+    echo "Writing Index 12"
+    ./nv_writevalue -pwdo $OWNER_PASSWORD \
+	-in 00000012 \
+	$DASH_D > run.out
+    ERR=$?
+    # Do not expect error
+    if [ "$1" != "E" ]; then
+	if [ $ERR -ne 0 ]; then
+	    echo " ERROR: Could not write into memory area."
+	    dumpOutput
+	else
+	    echo " INFO: Successfully wrote into memory area 12 $DASH_D"
+	fi
+    # expect error
+    else
+	if [ $ERR -ne 0 ]; then
+	    echo " INFO: Successfully completed command"
+	else
+	    echo " ERROR: Could write into memory area."
+	    dumpOutput
+	fi
+     fi    
+
+    echo "Writing Index 13"
+    ./nv_writevalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	$DASH_D > run.out
+    # Do not expect error
+    ERR=$?
+    if [ "$1" != "E" ]; then
+	if [ $ERR -ne 0 ]; then
+	    echo " ERROR: Could not write into memory area."
+	    dumpOutput
+	else
+	    echo " INFO: Successfully wrote into memory area 13 $DASH_D"
+	fi
+    # expect error
+    else
+	if [ $ERR -ne 0 ]; then
+	    echo " INFO: Successfully completed command"
+	else
+	    echo " ERROR: Could write into memory area."
+	    dumpOutput
+	fi
+    fi  
+}  
+    
+#
+# Read all 4 indexes
+#
+#	If the first parameter 1, a '1' is written.  
+#	An empty parameter becomes a data length 0
+#
+
+doNVRead()
+{
+    # parameter 1 writes and reads 1 byte
+    if [ "$1" == "1" ]; then
+	DASH_S="-sz 1"
+    # parameter 0 writes and reads 0 bytes
+    elif [ "$1" == "0" ]; then
+	DASH_S="-sz 0"
+    # parameter E writes and reads 1 byte but expects errors
+    elif [ "$1" == "E" ]; then
+	DASH_S="-sz 1"
+    fi
+
+    echo "Reading Index 10"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000010 \
+	$DASH_S \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not read from memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully read from the memory area 10 $DASH_S"
+    fi
+    
+    echo "Reading Index 11"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000011 \
+	$DASH_S \
+	> run.out
+    ERR=$?
+
+    # Do not expect error
+    if [ "$1" != "E" ]; then
+	if [ $ERR -ne 0 ]; then
+	    echo " ERROR: Could not read from memory area."
+	    dumpOutput
+	else
+	    echo " INFO: Successfully read from the memory area 13 $DASH_S"
+	fi
+    # expect error
+    else
+	if [ $ERR -ne 0 ]; then
+	    echo " INFO: Successfully completed command"
+	else
+	    echo " ERROR: Could read memory area."
+	    #dumpOutput
+	fi
+    fi    
+    
+    echo "Reading Index 12"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000012 \
+	$DASH_S \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not read from memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully read from the memory area 12 $DASH_S"
+    fi
+    
+    echo "Reading Index 13"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	$DASH_S \
+	> run.out
+    ERR=$?
+
+    # Do not expect error
+    if [ "$1" != "E" ]; then
+	if [ $ERR -ne 0 ]; then
+	    echo " ERROR: Could not read from memory area."
+	    #dumpOutput
+	else
+	    echo " INFO: Successfully read from the memory area 13 $DASH_S"
+	fi
+    # expect error
+    else
+	if [ $ERR -ne 0 ]; then
+	    echo " INFO: Successfully completed command"
+	else
+	    echo " ERROR: Could read memory area."
+	    #dumpOutput
+	fi
+    fi    
+}
+
+
+#
+# Reboot
+#
+# if first parameter is -s, does TPM_Startup(ST_STATE) else ST_CLEAR
+
+reboot()
+{
+    # suspend and resume
+    if [ "$1" == "-s" ]; then
+	echo "Saving TPM state."
+	savestate
+	if [ $? -eq 0 ]; then
+	    echo " INFO: Successfully saved the state."
+	else
+	    echo " ERROR: Could not save the state."
+	fi
+
+	echo "Rebooting the TPM with ST_STATE"
+	if [ "$USE_TPMINIT" == "0" ]; then
+	    echo ""
+	    echo "Please stop the TPM and restart it. Press enter to continue."
+	    read enter
+	    echo ""
+	else
+	    tpminit > run.out
+	fi
+	TPM_TRANSPORT_EK=
+	TPM_TRANSPORT_SK=
+
+	tpmbios -s > run.out
+	if [ $? -ne 0 ]; then
+	    echo " ERROR: Could not initialize communication with the TPM."
+	    echo "    *** Please re-cycle the TPM!! ***"
+	    dumpOutput
+	else
+	    echo " INFO: Successfully rebooted the TPM."
+	fi
+
+    # cold boot
+    else
+	echo "Rebooting the TPM"
+	if [ "$USE_TPMINIT" == "0" ]; then
+	    echo ""
+	    echo "Please stop the TPM and restart it. Press enter to continue."
+	    read enter
+	    echo ""
+	else
+	    tpminit > run.out
+	fi
+	TPM_TRANSPORT_EK=
+	TPM_TRANSPORT_SK=
+
+	tpmbios > run.out
+	if [ $? -ne 0 ]; then
+	    echo " ERROR: Could not initialize communication with the TPM."
+	    echo "    *** Please re-cycle the TPM!! ***"
+	    dumpOutput
+	else
+	    echo " INFO: Successfully rebooted the TPM."
+	fi
+    fi
+}
+
+doNVSaveStateTest ()
+{
+
+    echo "Set nvLock"
+    ./nv_definespace -in ffffffff \
+	-sz 0 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not set NV lock"
+	dumpOutput
+    else
+	echo " INFO: Successfully enabled memory authentication."
+    fi
+    
+# Create four owner authorized indexes
+#	10 
+#	11 PER_READ_STCLEAR
+#	12			PER_WRITE_STCLEAR
+#	13 PER_READ_STCLEAR	PER_WRITE_STCLEAR
+    
+    echo ""
+    createSTClearIndexes
+    
+#
+# Write Tests
+#
+    
+# Write all 4 indexes normally
+    
+    echo ""
+    doNVWrite 1
+    
+# Save State and reboot with ST_STATE
+    
+    echo ""
+    reboot -s
+    
+# Write all 4 indexes normally
+    
+    echo ""
+    doNVWrite 1
+    
+# Reboot
+    
+    echo ""
+    reboot
+    
+# Write all 4 indexes normally
+    
+    echo ""
+    doNVWrite 1
+    
+# Write all 4 indexes with data length 0
+    
+    echo ""
+    doNVWrite 0
+    
+# Write all 4 indexes and expect errors
+    
+    echo ""
+    doNVWrite E
+    
+# Save State and reboot with ST_STATE
+    
+    echo ""
+    reboot -s
+    
+# Write all 4 indexes and expect errors
+    
+    echo ""
+    doNVWrite E
+    
+# Reboot
+    
+    echo ""
+    reboot
+    
+# Write all 4 indexes normally
+    
+    echo ""
+    doNVWrite 1
+    
+#
+# Read Tests
+#
+    
+# Read all 4 indexes normally
+    
+    echo ""
+    doNVRead 1
+    
+# Save State and reboot with ST_STATE
+    
+    echo ""
+    reboot -s
+    
+# Read all 4 indexes normally
+    
+    echo ""
+    doNVRead 1
+    
+# Reboot
+    
+    echo ""
+    reboot
+    
+# Read all 4 indexes normally
+    
+    echo ""
+    doNVRead 1
+    
+# Read all 4 indexes with data length 0
+    
+    echo ""
+    doNVRead 0
+    
+# Read all 4 indexes and expect errors
+    
+    echo ""
+    doNVRead E
+    
+# Save State and reboot with ST_STATE
+    
+    echo ""
+    reboot -s
+    
+# Read all 4 indexes and expect errors
+    
+    echo ""
+    doNVRead E
+    
+# Reboot
+    
+    echo ""
+    reboot
+    
+# Read all 4 indexes normally
+    
+    echo ""
+    doNVRead 1
+    
+# special case - successful write clears bReadSTClear
+    echo ""
+    
+    echo "Read Index 13 with size 0 to set bReadSTClear"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	-sz 0 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not set bReadSTClear."
+	dumpOutput
+    else
+	echo " INFO: Successfully set bReadSTClear."
+    fi
+    
+    echo "Reading Index 13 with bReadSTClear set should report locked"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	-sz 1 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " INFO: Successfully completed command"
+    else
+	echo " ERROR: Could read memory area."
+	dumpOutput
+    fi
+    
+    echo "Write Index 13 to clear bReadSTClear"
+    ./nv_writevalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	-ic 1 > run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not write into memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully wrote into memory area 13"
+    fi
+    
+    echo "Reading Index 13 with bReadSTClear clear should succeed"
+    ./nv_readvalue -pwdo $OWNER_PASSWORD \
+	-in 00000013 \
+	-sz 1 \
+	> run.out
+    if [ $? -ne 0 ]; then
+	echo " ERROR: Could not read from memory area."
+	dumpOutput
+    else
+	echo " INFO: Successfully read from the memory area 13"
+    fi
+}
+
+doNVPCRTest ()
+{
+    echo ""
+
+    # define 
+    # 10 read locked to PCR 16 aaa
+    # 11 write locked to PCR 16 bbb
+
+    echo "Creating Index 10 with read authorized by PCR 16 aaa"
+    nv_definespace \
+	-pwdo ooo \
+	-in 00000010 \
+	-sz 10 \
+	-per 20002 \
+	-ixr 16 ab53c7ec3ffefe219e9d89daf18e16553e238ea6
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+        echo " INFO: Could define memory area."
+    fi
+	
+    echo "Creating Index 11 with write authorized by PCR 16 bbb"
+    nv_definespace \
+	-pwdo ooo \
+	-in 00000011 \
+	-sz 10 \
+	-per 20002 \
+	-ixw 16 9feb7255e0b519064dadfe720193261a07bb3f87
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not define memory area."
+	dumpOutput
+    else
+        echo " INFO: Could define memory area."
+    fi
+
+    # Reset PCR 16
+
+    echo "Reset PCR 16"
+    pcrreset -ix 16
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not reset PCR 16."
+	dumpOutput
+    else
+        echo " INFO: Could reset PCR 16."
+    fi
+
+    # Write 10, read 11 should succeed
+    # Read 10, write 11 should fail
+
+    echo "Write index 10 should succeed, not PCR authorized"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000010 \
+	-ic TestTest12
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not write index 10."
+	dumpOutput
+    else
+        echo " INFO: Could write index 10."
+    fi
+
+    echo "Write index 11 should fail, PCR authorized"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000011 \
+	-ic TestTest12 \
+	-ee $TPM_WRONGPCRVALUE
+    ERR=$?
+    if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+        echo " INFO: Successfully completed command."
+    else
+	echo " ERROR: Unexpected return code ($ERR)."
+	dumpOutput
+    fi
+
+    echo "Read index 10 should fail, PCR authorized"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000010 \
+	-sz 10 \
+	-off 0 \
+	-ee $TPM_WRONGPCRVALUE
+    ERR=$?
+    if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+        echo " INFO: Successfully completed command."
+    else
+	echo " ERROR: Unexpected return code ($ERR)."
+	dumpOutput
+    fi
+
+    echo "Read index 11 should succeed, not PCR authorized"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000011 \
+	-sz 10 \
+	-off 0
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not read index 11."
+	dumpOutput
+    else
+        echo " INFO: Could read index 11."
+    fi
+
+    # extend PCR 16 with aaa
+
+    echo "Extend PCR 16 with aaa"
+    extend -ix 16 -ic aaa
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not extend PCR."
+	dumpOutput
+    else
+        echo " INFO: Could extend PCR 16."
+    fi
+
+    # Write 10, read 10, 11 should succeed
+    # write 11 should fail
+
+    echo "Write index 10 should succeed, not PCR authorized"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000010 \
+	-ic TestTest12
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not write index 10."
+	dumpOutput
+    else
+        echo " INFO: Could write index 10."
+    fi
+
+    echo "Write index 11 should fail, PCR authorized"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000011 \
+	-ic TestTest12 \
+	-ee $TPM_WRONGPCRVALUE
+    ERR=$?
+    if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+        echo " INFO: Successfully completed command."
+    else
+	echo " ERROR: Unexpected return code ($ERR)."
+	dumpOutput
+    fi
+
+    echo "Read index 10 should succeed, PCR correct"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000010 \
+	-sz 10 \
+	-off 0
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not read index 10."
+	dumpOutput
+    else
+        echo " INFO: Could read index 10."
+    fi
+
+    echo "Read index 11 should succeed, not PCR authorized"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000011 \
+	-sz 10 \
+	-off 0
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not read index 11."
+	dumpOutput
+    else
+        echo " INFO: Could read index 11."
+    fi
+
+    # reset PCR 16 and extend with bbb
+
+    echo "Reset PCR 16"
+    pcrreset -ix 16
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not reset PCR 16."
+	dumpOutput
+    else
+        echo " INFO: Could reset PCR 16."
+    fi
+
+    echo "Extend PCR 16 with bbb"
+    extend -ix 16 -ic bbb
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not extend PCR."
+	dumpOutput
+    else
+        echo " INFO: Could extend PCR 16."
+    fi
+
+    # Write 10, 11 read 11 should succeed
+    # Read 10 should fail
+
+    echo "Write index 10 should succeed, not PCR authorized"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000010 \
+	-ic TestTest12
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not write index 10."
+	dumpOutput
+    else
+        echo " INFO: Could write index 10."
+    fi
+
+    echo "Write index 11 should succeed, PCR correct"
+    nv_writevalue  \
+	-pwdo ooo \
+	-in 00000011 \
+	-ic TestTest12
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not write index 11."
+	dumpOutput
+    else
+        echo " INFO: Could write index 11."
+    fi
+
+    echo "Read index 10 should fail, PCR authorized"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000010 \
+	-sz 10 \
+	-off 0 \
+	-ee $TPM_WRONGPCRVALUE
+    ERR=$?
+    if [ $ERR -eq $TPM_WRONGPCRVALUE ]; then
+        echo " INFO: Successfully completed command."
+    else
+	echo " ERROR: Unexpected return code ($ERR)."
+	dumpOutput
+    fi
+
+    echo "Read index 11 should succeed, not PCR authorized"
+    nv_readvalue   \
+	-pwdo ooo \
+	-in 00000011 \
+	-sz 10 \
+	-off 0
+    ERR=$?
+    if [ $ERR -ne 0 ]; then
+	echo " ERROR: Could not read index 11."
+	dumpOutput
+    else
+        echo " INFO: Could read index 11."
+    fi
+}

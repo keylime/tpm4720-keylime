@@ -1,0 +1,477 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_transport 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+doTransportTest ()
+{
+	echo ""
+	echo "Creating a storage key using SRK as parent."
+	createkey -kt e \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $STORAGEKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $STORAGEKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully create storage key."
+
+		echo "Loading storage key into TPM."
+		loadkey -hp $SRK_HANDLE \
+		        -ik $STORAGEKEY_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM. Leaving test."
+			dumpOutput
+			return 1
+		else
+			STORAGEKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded storage key into TPM. Handle is $STORAGEKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating signing key using SRK as parent."
+	createkey -kt s \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $SIGNINGKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Leaving test."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_HANDLE"
+		fi
+	fi
+
+	local PCRREGISTER=10
+	local DATA=mmm
+
+	echo "Extending value of PCR register $PCRREGISTER"
+	calcfuturepcr -ix $PCRREGISTER -ic $DATA > run.out
+	NEWPCRVALUE=`grep -E "Future" run.out | gawk '{print $6}'`
+	extend -ix $PCRREGISTER -ic $DATA > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not extend future PCR value."
+		dumpOutput
+	else
+		echo " INFO: Successfully extended PCR value."
+		PCRVALUE=`grep -E "New" run.out | gawk '{print $5}'`
+		if [ $NEWPCRVALUE == $PCRVALUE ]; then
+			echo " INFO: New PCR value of register $PCRREGISTER is correct."
+		else
+			echo " ERROR: New PCR of register $PCRREGISTER is incorrect."
+			echo "        $NEWPCRVALUE != $PCRVALUE"
+			dumpOutput
+		fi
+	fi
+
+	echo "Reading value of a PCR"
+	pcrread -ix $PCRREGISTER > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read PCR register $PCRREGISTER."
+		dumpOutput
+	else
+		PCRVALUE=`grep -E "Current" run.out | gawk '{print $6}'`
+		echo " INFO: Successfully read PCR register. $PCRVALUE"
+	fi
+
+
+	check_audit_digest
+
+	REMEMBER_TPM_TRANSPORT_ENC=$TPM_TRANSPORT_ENC
+
+	TPM_TRANSPORT_ENC="MGF1"
+
+	echo "Testing transport session with storage and signing keys using $TPM_TRANSPORT_ENC."
+	transport_test -ek  $STORAGEKEY_HANDLE \
+	               -ekp $STORAGEKEY_PASSWORD \
+	               -sk  $SIGNINGKEY_HANDLE \
+	               -skp $SIGNINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Transport session test was successful."
+		PCRVAL=`cat run.out | grep "PCR Value" | gawk '{ print $6 }'`
+		if [ "$PCRVAL" != "$PCRVALUE" ]; then
+			echo " ERROR: Returned PCR value is wrong. Is something (IMA) using PCR $PCRREGISTER ?"
+		else
+			echo "       PCR value is correct."
+		fi
+	else
+		echo " ERROR: Transport session test not successful."
+	        echo "transport_test -ek $STORAGEKEY_HANDLE -ekp $STORAGEKEY_PASSWORD -sk  $SIGNINGKEY_HANDLE -skp $SIGNINGKEY_PASSWORD"
+		dumpOutput
+	fi
+
+	checkTransportSupportsCTR
+	rc=$?
+	if [ $rc -ne 0 ]; then
+
+		TPM_TRANSPORT_ENC="CTR"
+
+		echo "Testing transport session with storage and signing keys using $TPM_TRANSPORT_ENC."
+		transport_test -ek  $STORAGEKEY_HANDLE \
+		               -ekp $STORAGEKEY_PASSWORD \
+		               -sk  $SIGNINGKEY_HANDLE \
+		               -skp $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Transport session test was successful."
+			PCRVAL=`cat run.out | grep "PCR Value" | gawk '{ print $6 }'`
+			if [ "$PCRVAL" != "$PCRVALUE" ]; then
+				echo " ERROR: Returned PCR value is wrong. Is something (IMA) using PCR $PCRREGISTER ?"
+			else
+				echo "       PCR value is correct."
+			fi
+		else
+			echo " ERROR: Transport session test not successful."
+			dumpOutput
+		fi
+	else
+		echo ""
+		echo " Skipping test with CTR Transport encryption since not supported"
+		echo ""
+	fi
+
+
+	checkTransportSupportsOFB
+	rc=$?
+	if [ $rc -ne 0 ]; then
+
+		TPM_TRANSPORT_ENC="OFB"
+
+		echo "Testing transport session with storage and signing keys using $TPM_TRANSPORT_ENC."
+		transport_test -ek  $STORAGEKEY_HANDLE \
+		               -ekp $STORAGEKEY_PASSWORD \
+		               -sk  $SIGNINGKEY_HANDLE \
+		               -skp $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Transport session test was successful."
+			PCRVAL=`cat run.out | grep "PCR Value" | gawk '{ print $6 }'`
+			if [ "$PCRVAL" != "$PCRVALUE" ]; then
+				echo " ERROR: Returned PCR value is wrong. Is something (IMA) using PCR $PCRREGISTER ?"
+			else
+				echo "       PCR value is correct."
+			fi
+		else
+			echo " ERROR: Transport session test not successful."
+			dumpOutput
+		fi
+	else
+		echo ""
+		echo " Skipping test with OFB Transport encryption since not supported"
+		echo ""
+	fi
+
+
+	TPM_TRANSPORT_ENC=$REMEMBER_TPM_TRANSPORT_ENC
+}
+
+doTransportContextTest ()
+{
+	TPM_TRANSPORT_REMEMBER=$TPM_TRANSPORT
+	TPM_TRANSPORT_ENC_REMEMBER=$TPM_TRANSPORT_ENC
+
+	TPM_TRANSPORT_HANDLE=""
+
+	[ -z $TPM_TRANSPORT_ENC ] && TPM_TRANSPORT_ENC=MGF1
+
+	echo "Creating Transport Session $STORAGEKEY_HANDLE "
+	session transport -ek  $STORAGEKEY_HANDLE \
+	                  -ekp $STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		TPM_TRANSPORT_HANDLE=`grep "Successfully" run.out | gawk '{ print $4 }'`
+		TPM_TRANSPORT_ENONCE=`grep "Even Nonce" run.out | gawk '{ print $3 }'`
+		TPM_TRANSPORT_PASS=`grep "Session Sec" run.out | gawk '{ print $3 }'`
+		echo " INFO: Successfully created the transport session."
+
+#		echo "TPM_TRANSPORT_PASS=$TPM_TRANSPORT_PASS"
+#		echo "TPM_TRANSPORT_ENONCE=$TPM_TRANSPORT_ENONCE"
+#		echo "TPM_TRANSPORT_HANDLE=$TPM_TRANSPORT_HANDLE"
+
+		TPM_TRANSPORT=2
+		TRANSPORTCONTEXTFILE=transportcontext.bin
+
+		doTestRandom
+
+#		echo "TPM_TRANSPORT_PASS=$TPM_TRANSPORT_PASS"
+#		echo "TPM_TRANSPORT_ENONCE=$TPM_TRANSPORT_ENONCE"
+#		echo "TPM_TRANSPORT_HANDLE=$TPM_TRANSPORT_HANDLE"
+
+		echo "Checking whether the transport session ($TPM_TRANSPORT_HANDLE) is still in the TPM."
+		checkTransportInTPM $TPM_TRANSPORT_HANDLE
+		RET=$?
+		if [ $RET -eq 1 ]; then
+			echo " INFO: The transport session is available."
+		else
+			echo " ERROR: The transport $TPM_TRANSPORT_HANDLE session is not available."
+			dumpOutput
+		fi
+
+#		echo "TPM_TRANSPORT_PASS=$TPM_TRANSPORT_PASS"
+#		echo "TPM_TRANSPORT_ENONCE=$TPM_TRANSPORT_ENONCE"
+#		echo "TPM_TRANSPORT_HANDLE=$TPM_TRANSPORT_HANDLE"
+
+		# Need to turn off the global transport stuff
+		TPM_TRANSPORT="0"
+
+		echo "Saving the transport session context."
+		rm -rf $TRANSPORTCONTEXTFILE > run.out
+		savecontext -ha $TPM_TRANSPORT_HANDLE \
+		            -rt $TPM_RT_TRANS \
+		            -la transport \
+		            -of $TRANSPORTCONTEXTFILE > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully saved the context of the transport session."
+		else
+			echo " ERROR: Could not save the transport session."
+			dumpOutput
+		fi
+
+#		echo "TPM_TRANSPORT_PASS=$TPM_TRANSPORT_PASS"
+#		echo "TPM_TRANSPORT_ENONCE=$TPM_TRANSPORT_ENONCE"
+#		echo "TPM_TRANSPORT_HANDLE=$TPM_TRANSPORT_HANDLE"
+
+		echo "Checking whether the transport session ($TPM_TRANSPORT_HANDLE) is still in the TPM."
+		checkTransportInTPM $TPM_TRANSPORT_HANDLE
+		RET=$?
+		if [ $RET -eq 1 ]; then
+			echo " ERROR: The transport session is still in the TPM."
+			dumpOutput
+		else
+			echo " INFO: The transport session has been unloaded."
+		fi
+
+		echo "Restoring the transport session context."
+		loadcontext -keep \
+		            -ha $TPM_TRANSPORT_HANDLE \
+		            -if $TRANSPORTCONTEXTFILE > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully restored transport session."
+		else
+			echo " ERROR: Could not restore transport session ($ERR)."
+			dumpOutput
+		fi
+
+		echo "Checking whether the transport session ($TPM_TRANSPORT_HANDLE) is in the TPM."
+		checkTransportInTPM $TPM_TRANSPORT_HANDLE
+		RET=$?
+		if [ $RET -eq 1 ]; then
+			echo " INFO: The transport session is available."
+		else
+			echo " ERROR: The transport session $TPM_TRANSPORT_HANDLE is not available."
+			dumpOutput
+		fi
+	
+		echo "Flushing the transport session."
+		flushspecific -ha $TPM_TRANSPORT_HANDLE \
+		              -rt $TPM_RT_TRANS > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully flushed the transport session."
+		else
+			echo " ERROR: Could not flush the transport session."
+			dumpOutput
+		fi
+
+	else
+		echo " ERROR: Could not create transport $ERR "
+		dumpOutput
+	fi
+
+
+	TPM_TRANSPORT=$TPM_TRANSPORT_REMEMBER
+	TPM_TRANSPORT_ENC=$TPM_TRANSPORT_ENC_REMEMBER
+}
+
+
+createTransportKeys ()
+{
+	RES=0
+
+	chgtpmauth -own -pwdo $1 -pwdn $1 > run.out
+	ERR=$?
+
+	if [ $ERR -ne 0 ]; then
+		TPM_TRANSPORT_EK=""
+		TPM_TRANSPORT_SK=""
+		return 0
+	fi
+
+	if [ "$TPM_TRANSPORT" != "1" ]; then
+		return 0
+	fi
+
+	if [ "$TPM_TRANSPORT_SK" != "" ]; then
+		checkKeyInTPM $TPM_TRANSPORT_SK
+		RES=$?
+	fi
+
+	if [ $RES -eq 0 ]; then
+		TPM_TRANSPORT_EK=""
+		echo "Creating signing key for transport."
+		createSigningKey
+		echo " INFO: Key has handle $TPM_TRANSPORT_SK"
+	fi
+
+	if [ "$TPM_TRANSPORT_EK" != "" ]; then
+		checkKeyInTPM $TPM_TRANSPORT_EK
+		RES=$?
+	fi
+
+	if [ $RES -eq 0 ]; then
+		echo "Creating encryption key for transport."
+		createEncryptionKey
+		echo " INFO: Key has handle $TPM_TRANSPORT_EK"
+	fi
+
+}
+
+createEncryptionKey ()
+{
+	if [ "$NO_SRK_PASSWORD" == "1" ]; then
+		createkey -kt e \
+		          -pwdk $TRANS_STORAGEKEY_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -sz $KEYSIZE_ST \
+		          -ok $TRANS_STORAGEKEY_FILENAME \
+		          -hp $SRK_HANDLE > run.out
+	else
+		createkey -kt e \
+		          -pwdp $SRK_PASSWORD \
+		          -pwdk $TRANS_STORAGEKEY_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -sz $KEYSIZE_ST \
+		          -ok $TRANS_STORAGEKEY_FILENAME \
+		          -hp $SRK_HANDLE > run.out
+	fi
+	ERR=$?
+
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not create encryption key for transport."
+		dumpOutput
+		return 1
+	else
+		if [ "$NO_SRK_PASSWORD" == "1" ]; then
+			loadkey -hp $SRK_HANDLE \
+			        -ik $TRANS_STORAGEKEY_FILENAME.key > loadkey.out
+		else
+			loadkey -hp $SRK_HANDLE \
+			        -ik $TRANS_STORAGEKEY_FILENAME.key \
+			        -pwdp $SRK_PASSWORD > loadkey.out
+		fi
+
+		if [ $? -ne 0 ]; then
+			return 1
+		else
+			TPM_TRANSPORT_EK=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			TPM_TRANSPORT_EKP=$TRANS_STORAGEKEY_PASSWORD
+#			echo "$TPM_TRANSPORT_EK"
+		fi
+	fi
+	return 0
+}
+
+createSigningKey()
+{
+	if [ "$NO_SRK_PASSWORD" == "1" ]; then
+		createkey -kt s \
+		          -pwdk $TRANS_SIGNINGKEY_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -sz $KEYSIZE \
+		          -ok $TRANS_SIGNINGKEY_FILENAME \
+		          -hp $SRK_HANDLE > run.out
+	else
+		createkey -kt s \
+		          -pwdp $SRK_PASSWORD \
+		          -pwdk $TRANS_SIGNINGKEY_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -sz $KEYSIZE \
+		          -ok $TRANS_SIGNINGKEY_FILENAME \
+		          -hp $SRK_HANDLE > run.out
+	fi
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not create signing key for transport."
+		dumpOutput
+		return 1
+	else
+		if [ "$NO_SRK_PASSWORD" == "1" ]; then
+			loadkey -hp $SRK_HANDLE \
+			          -ik $TRANS_SIGNINGKEY_FILENAME.key > loadkey.out
+		else
+			loadkey -hp $SRK_HANDLE \
+			          -ik $TRANS_SIGNINGKEY_FILENAME.key \
+			          -pwdp $SRK_PASSWORD > loadkey.out
+		fi
+
+		if [ $? -ne 0 ]; then
+			return 1
+		else
+			TPM_TRANSPORT_SK=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			TPM_TRANSPORT_SKP=$TRANS_SIGNINGKEY_PASSWORD
+#			echo "$TPM_TRANSPORT_SK"
+		fi
+	fi
+	return 0	
+}

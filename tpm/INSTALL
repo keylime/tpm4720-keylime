@@ -1,0 +1,253 @@
+		Installing and running the TPM
+		     Written by Ken Goldman
+		       IBM Thomas J. Watson Research Center
+		$Id: INSTALL 4716 2013-12-24 20:47:44Z kgoldman $
+
+(c) Copyright IBM Corporation 2010:
+
+This documentation is provided with source code (Trusted Platform
+Module (TPM) subject to the following license:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the names of the IBM Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------------------------
+
+Server - the TPM
+Client - the TPM applications (e.g., test suite)
+
+---------
+Compiling
+---------
+
+See README for compiler options.
+
+
+---------------------------------
+Server environment variables are:
+---------------------------------
+
+TPM_PATH (server)
+
+	The full path to the directory where the server stores
+	non-volatile data.
+
+	If more than one TPM server is running on the same platform
+	(e.g., to test key migration), each TPM must have a unique
+	TPM_PATH.
+
+	It is recommended (but not required) that this directory be
+	otherwise empty, because:
+
+	1 - The TPM uses hard coded file names.  Using a unique
+	directory ensures that there will be no accidental name
+	collisions.
+
+	2 - At times, one wants to return the TPM to factory defaults
+	by deleting all TPM data from the directory.  This is easier
+	if there are no other files present.
+
+TPM_PORT (server)
+
+	For TCP/IP sockets:
+
+	The TCP/IP socket port where the TPM server listens for TPM
+	commands from the client application.
+
+	For Unix Domain Sockets:
+
+	The Unix domain socket file name where the TPM server listens
+	for TPM commands from the client application.
+
+TPM_SERVER_NAME (client)
+
+	The server host name or IP address.
+
+TPM_SERVER_PORT (client)
+
+	For TCP/IP sockets:
+
+	The TCP/IP socket port the TPM client uses to send commands to
+	the TPM.
+
+
+------------------
+Running the server
+------------------
+
+The executable is tpm_server (Unix) or tpm_server.exe (Windows).
+
+It does not require root (Unix) or Administrator (Windows) privileges.
+
+The first time through, non-volatile storage is created and saved.
+After the first time, this non-volatile storage is read and used to
+initialize the TPM.
+
+Since the TPM is 'shipped' deactivated, the procedure for the
+first time is:
+
+- start the server
+
+	> tpm_server
+
+- simulate BIOS and activating the TPM
+
+	> tpmbios
+
+- abort and restart (reboot) the server 
+
+	> ^C
+	> tpm_server
+
+- simulate BIOS
+
+	> tpmbios
+
+After the TPM is activated, each restart required only:
+
+	> tpm_server
+	> tpmbios
+
+Implementation note: The server and client both break the socket
+connection after each response is returned.  Since the TPM has no
+explicit 'disconnect' command, clients may not know if multiple
+commands are to be sent, and a broken client should not tie up the
+server, this is the cleanest approach.
+
+----------
+Trace Data
+----------
+
+For debugging, extensive tracing to routed to stdout.  Typically, this
+it piped to a log file.  For example:
+
+	> tpm_server >! tpm.log
+
+By convention, all errors detected by the TPM server include the
+string 'Error'.  Errors that cause the TPM to go into failure mode
+include the string "Fatal'.
+
+---------------------
+Testing
+---------------------
+
+- - - - - - - - - -
+IBM Regression Test
+- - - - - - - - - -
+
+Test scripts are located in the .../host/libtpm2.0/utils directory,
+with a dependency on library functions in .../host/libtpm2.0/lib.
+
+For a basic test, use
+
+	> tpmbios
+
+This does a TPM_Startup, sets physical presence, enables and activates
+the TPM.
+
+Additional quick tests are
+	
+	> createek
+	> takeown -pwdo ooo -pwds sss
+
+For a regression test, use
+
+	> bash
+	> test_console.sh 2>&1 | tee error.log4j
+
+which displays a list of tests and options.  The regression test
+requires two TPM servers in order to test key migration.  By
+convention, one server is at 6543 and one at 6545.  An example of how
+to run two TPMs after the environment variables are set is:
+
+Shell with 6543 environment:
+
+> tpm_server >! tpm.log
+
+Shell with 6545 environment:
+
+> tpm_server >! tpm6545.log
+
+- - - - - - - - - -
+TCG Test Suite
+- - - - - - - - - -
+
+Start with a 'factory fresh' TPM by removing all state.
+
+Compile with 'makefile-ts'
+
+Initialize with this script:
+
+> ./tpmbios
+> ./physicalpresence -c
+> ./physicalpresence -x 04
+> ./physicalpresence -x 80
+> ./createek
+> ./nv_definespace -ix ffffffff -sz 0
+> ./takeown -pwdo ownerAuth -pwds srkAuth
+
+Use this script if the test suite prompts for a reboot.
+        Do it twice if the test suite indicates that the TPM is disabled.
+
+> ./tpmbios
+> ./physicalpresence -x 10
+> ./physicalpresence -x 04
+
+Use this script when the test suite prompts for a force clear,
+typically followed by two more reboots.
+
+> ./tpmbios
+> ./forceclear
+
+Run the test suite using this command:
+
+> ./tpmtest -ibm localhost:6543
+
+- - - - - - - - - -
+TSS Test Suite
+- - - - - - - - - -
+
+Examples - varies with trousers install path
+
+> export LD_LIBRARY_PATH=/root/trousers-0.3.1/src/tspi/.libs
+
+Add to /usr/local/etc/tcsd.conf:
+
+remote_ops = seal,unseal,registerkey,unregisterkey,loadkey,createkey,sign,random,getcapability,unbind,quote,readpubek,getregisteredkeybypublicinfo,getpubkey,selftest
+
+Must be owner/group/mode tss/tss/0600
+
+> export TESTSUITE_OWNER_SECRET="ownerAuth"
+> export TESTSUITE_SRK_SECRET="srkAuth"
+
+> /root/trousers-0.3.1/src/tcsd/tcsd -f > tss.log 2>&1
+
+> ./tpmbios
+> ./createek
+> ./takeown -pwdo ownerAuth -pwds srkAuth
+
+./tsstests.sh -v 1.2 &> logfile

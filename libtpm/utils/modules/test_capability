@@ -1,0 +1,2060 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_capability 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+
+doTestGetCapability()
+{
+	PARM=$1
+	echo ""
+	echo "Checking which ordinals between 10 and 242 are NOT implemented."
+	echo "Skipping those that are known to be unused."
+	ord=10
+	notimpl=""
+	while [ $ord -le 242 ]; do
+		getcapability $PARM -cap $TPM_CAP_ORD -scapd $ord > run.out
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			hexord=`echo $ord | gawk '{ printf("0x%x",$1) }'`
+			notimpl="$notimpl $ord ($hexord),"
+		fi
+		let ord=ord+1
+		# skip unused
+		if [ $ord -eq 38 ]; then
+			ord=40;
+		elif [ $ord -eq 41 ]; then
+			ord=42;
+		elif [ $ord -eq 49 ]; then
+			ord=50;
+		elif [ $ord -eq 52 ]; then
+			ord=60;
+		elif [ $ord -eq 65 ]; then
+			ord=70
+		elif [ $ord -eq 72 ]; then
+			ord=80
+		elif [ $ord -eq 81 ]; then
+			ord=82
+		elif [ $ord -eq 85 ]; then
+			ord=90
+		elif [ $ord -eq 95 ]; then
+			ord=100
+		elif [ $ord -eq 103 ]; then
+			ord=110
+		elif [ $ord -eq 118 ]; then
+			ord=120
+		elif [ $ord -eq 123 ]; then
+			ord=124
+		elif [ $ord -eq 132 ]; then  # Unused
+			ord=133
+		elif [ $ord -eq 135 ]; then  # Unused
+			ord=140
+		elif [ $ord -eq 142 ]; then
+			ord=150
+		elif [ $ord -eq 155 ]; then
+			ord=160
+		elif [ $ord -eq 164 ]; then
+			ord=170
+		elif [ $ord -eq 171 ]; then
+			ord=180
+		elif [ $ord -eq 187 ]; then
+			ord=200
+		elif [ $ord -eq 201 ]; then
+			ord=204
+		elif [ $ord -eq 211 ]; then
+			ord=212
+		elif [ $ord -eq 215 ]; then
+			ord=216
+		elif [ $ord -eq 217 ]; then
+			ord=219
+		elif [ $ord -eq 225 ]; then
+			ord=230
+		elif [ $ord -eq 233 ]; then
+			ord=242
+		fi
+		#skip TPM 1.2 unused
+		if [ $TPM_VERSION -eq 12 ]; then
+		    if [ $ord -eq 82 ]; then # TPM_CertifySelfTest
+			ord=83;
+		    elif [ $ord -eq 100 ]; then # TPM_GetCapabilitySigned
+			ord=101;
+		    elif [ $ord -eq 130 ]; then # TPM_GetAuditEvent
+			ord=133;
+		    elif [ $ord -eq 140 ]; then # TPM_GetOrdinalAuditStatus
+			ord=141;
+		    fi 
+		fi
+	done
+	echo "The following ordinals are not implemented:"
+	echo "ordinal $notimpl"
+
+	echo " INFO: 154 is TPM_SetRedirection, 170 is TPM_FieldUpgrade"
+
+	echo ""
+	echo "Checking which algorithms are supported for signing/sealing/binding"
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA   : NO"
+		else
+			echo "RSA   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "DES   : NO"
+		else
+			echo "DES   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "3DES  : NO"
+		else
+			echo "3DES  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SHA   : NO"
+		else
+			echo "SHA   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "HMAC  : NO"
+		else
+			echo "HMAC  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 6 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES128: NO"
+		else
+			echo "AES128: YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 7 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "MGF1  : NO"
+		else
+			echo "MGF1  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 8 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES192: NO"
+		else
+			echo "AES192: YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_ALG -scap 9 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES256: NO"
+		else
+			echo "AES256: YES"
+		fi
+	fi
+
+	echo ""
+	echo "Checking which protocols the TPM supports:"
+	getcapability $PARM -cap $TPM_CAP_PID -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "OIAP : NO"
+		else
+			echo "OIAP : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "OSAP : NO"
+		else
+			echo "OSAP : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "ADIP : NO"
+		else
+			echo "ADIP : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "ADCP : NO"
+		else
+			echo "ADCP : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "OWNER: NO"
+		else
+			echo "OWNER: YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 6 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "DSAP : NO"
+		else
+			echo "DSAP : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_PID -scap 7 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "TRANSPORT : NO"
+		else
+			echo "TRANSPORT : YES"
+		fi
+	fi
+
+
+	echo ""
+	echo "Getting the permanent flags:"
+	getcapability $PARM -cap $TPM_CAP_FLAG -scap 0x108
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	fi
+
+	echo ""
+	echo "Getting the volatile flags:"
+	getcapability $PARM -cap $TPM_CAP_FLAG -scap 0x109
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	fi
+
+	echo ""
+	echo "Getting the version of the TPM."
+	getcapability $PARM -cap $TPM_CAP_VERSION 
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	fi
+
+	echo ""
+	echo "Getting the key handles on the TPM:"
+	getcapability $PARM -cap $TPM_CAP_KEY_HANDLE
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	fi
+
+	echo ""
+	echo "Checking whether a key using a given algorithm could still be loaded."
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "RSA   : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA   : NO"
+		else
+			echo "RSA   : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "DES   : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "DES   : NO"
+		else
+			echo "DES   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "3DES  : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "3DES  : NO"
+		else
+			echo "3DES  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "SHA   : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SHA   : NO"
+		else
+			echo "SHA   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "HMAC  : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "HMAC  : NO"
+		else
+			echo "HMAC  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 6 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "AES128: NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES128: NO"
+		else
+			echo "AES128: YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 7 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "MGF1  : NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "MGF1  : NO"
+		else
+			echo "MGF1  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 8 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "AES192: NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES192: NO"
+		else
+			echo "AES192: YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_CHECK_LOADED -scap 9 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo "AES256: NO (Return code from TPM=$ERR)"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES256: NO"
+		else
+			echo "AES256: YES"
+		fi
+	fi
+
+	echo ""
+	echo "Listing available nv indices:"
+	getcapability $PARM -cap $TPM_CAP_NV_LIST
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	fi
+
+
+	echo ""
+	echo "Checking which algorithms can be used for transport sessions."
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA   : NO"
+		else
+			echo "RSA   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "DES   : NO"
+		else
+			echo "DES   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "3DES  : NO"
+		else
+			echo "3DES  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SHA   : NO"
+		else
+			echo "SHA   : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "HMAC  : NO"
+		else
+			echo "HMAC  : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 6 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES128: NO"
+		else
+			echo "AES128: YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 7 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "MGF1  : NO"
+		else
+			echo "MGF1  : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 8 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES192: NO"
+		else
+			echo "AES192: YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_TRANS_ALG -scap 9 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES256: NO"
+		else
+			echo "AES256: YES"
+		fi
+	fi
+
+
+	echo ""
+	echo "Checking which encryption scheme can be used for transport sessions."
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR for enc. scheme '1'"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "NONE  : NO"
+		else
+			echo "NONE  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR for enc. scheme '2'"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA PKCS v15  : NO"
+		else
+			echo "RSA PKCS v15  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR for enc. scheme '3'"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA OAEP SHA1 MGF1  : NO"
+		else
+			echo "RSA OAEP SHA1 MGF1  : YES"
+		fi
+	fi
+	
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR for enc. scheme '4'"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SYM CNT  : NO"
+		else
+			echo "SYM CNT  : YES"
+		fi
+	fi
+
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR for enc. scheme '5'"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SYM OFB  : NO"
+		else
+			echo "SYM OFB  : YES"
+		fi
+	fi
+
+
+	echo ""
+	echo "Checking the algorithms supported in OSAP sessions."
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 1 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "RSA   : NO"
+		else
+			echo "RSA   : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 2 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "DES   : NO"
+		else
+			echo "DES   : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 3 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "3DES  : NO"
+		else
+			echo "3DES  : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "SHA   : NO"
+		else
+			echo "SHA   : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "HMAC  : NO"
+		else
+			echo "HMAC  : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 6 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES128: NO"
+		else
+			echo "AES128: YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 7 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "MGF1  : NO"
+		else
+			echo "MGF1  : YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 8 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES192: NO"
+		else
+			echo "AES192: YES"
+		fi
+	fi
+	getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap 9 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "AES256: NO"
+		else
+			echo "AES256: YES"
+		fi
+	fi
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: GetCapability returned error code $ERR"
+	else
+		getcapability $PARM -cap $TPM_CAP_AUTH_ENCRYPT -scap a > run.out
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			echo "XOR   : NO"
+		else
+			echo "XOR   : YES"
+		fi
+	fi
+
+
+	echo ""
+	echo "Checking the select size for the version 1.1."
+	CTR=0
+	while [ $CTR -le 9 ]; do
+		getcapability $PARM -cap $TPM_CAP_SELECT_SIZE -scap 0x0101000$CTR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: GetCapability returned error code $ERR"
+		else
+			ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+			if [ "$ERR" == "FALSE" ]; then
+				echo "Size $CTR: NO"
+			else
+				echo "Size $CTR: YES"
+			fi
+		fi
+		let CTR=CTR+1
+	done
+
+	echo ""
+	echo "Checking the select size for the version 1.2."
+	CTR=0
+	while [ $CTR -le 9 ]; do
+		getcapability $PARM -cap $TPM_CAP_SELECT_SIZE -scap 0x0102000$CTR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: GetCapability returned error code $ERR"
+		else
+			ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+			if [ "$ERR" == "FALSE" ]; then
+				echo "Size $CTR: NO"
+			else
+				echo "Size $CTR: YES"
+			fi
+		fi
+		let CTR=CTR+1
+	done
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo ""
+		echo "Enabling long DA_INFO version."
+		setcapability -pwdo $OWNER_PASSWORD \
+		              -cap $TPM_SET_PERM_FLAGS \
+		              -scap $TPM_PF_DISABLEFULLDALOGICINFO -val 0 > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Call to setcapability failed."
+			dumpOutput
+		fi
+
+		echo ""
+		echo "Checking dictionary attack logic for TPM_ET_KEYHANDLE."
+		getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_KEYHANDLE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+
+		echo ""
+		echo "Checking dictionary attack logic for TPM_ET_OWNER."
+		getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_OWNER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+
+		echo ""
+		echo "Checking dictionary attack logic for TPM_ET_SRK."
+		getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_SRK > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+
+		echo ""
+		echo "Checking dictionary attack logic for TPM_ET_COUNTER."
+		getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_COUNTER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+
+		echo ""
+		echo "Checking dictionary attack logic for TPM_ET_OPERATOR."
+		getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_OPERATOR > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+
+		echo "Switching to short DA_INFO version."
+		setcapability -pwdo $OWNER_PASSWORD \
+		              -cap $TPM_SET_PERM_FLAGS \
+		              -scap $TPM_PF_DISABLEFULLDALOGICINFO -val 1 > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Call to setcapability failed."
+			dumpOutput
+		else
+			echo ""
+			echo "Checking dictionary attack logic for TPM_ET_KEYHANDLE."
+			getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_KEYHANDLE > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not check this property."
+				dumpOutput
+			else
+				cat run.out
+			fi
+				echo ""
+			echo "Checking dictionary attack logic for TPM_ET_OWNER."
+			getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_OWNER > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not check this property."
+				dumpOutput
+			else
+				cat run.out
+			fi
+
+			echo ""
+			echo "Checking dictionary attack logic for TPM_ET_SRK."
+			getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_SRK > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not check this property."
+				dumpOutput
+			else
+				cat run.out
+			fi
+
+			echo ""
+			echo "Checking dictionary attack logic for TPM_ET_COUNTER."
+			getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_COUNTER > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not check this property."
+				dumpOutput
+			else
+				cat run.out
+			fi
+
+			echo ""
+			echo "Checking dictionary attack logic for TPM_ET_OPERATOR."
+			getcapability $PARM -cap $TPM_CAP_DA_LOGIC -scap $TPM_ET_OPERATOR > run.out
+			ERR=$?
+			if [ $ERR -ne 0 ]; then
+				echo " ERROR: Could not check this property."
+				dumpOutput
+			else
+				cat run.out
+			fi
+
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo ""
+		echo "Checking the startup effects"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_STARTUP_EFFECT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			cat run.out
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo ""
+		echo "Checking number of authorization sessions"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_AUTHSESS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check the number of authorization sessions."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of authorization sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking number of available saved session slots"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_CONTEXT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of available saved session slots: $RES"
+		fi
+	fi
+
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking maximum distance between context count values"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_CONTEXT_DIST > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum distance between context count values: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking number of available counters"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_COUNTERS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of available counters: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking whether other commands are accepted during DAA session"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_DAA_INTERRUPT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Other commands are accepted: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of DAA sessions the TPM supports"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_DAA_MAX > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of DAA sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the size of the delegate table in rows"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_DELEGATE_ROW > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Size of the delegate table in rows: $RES"
+		fi
+	fi
+
+
+	echo "Checking the number of DIRs"
+	getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_DIR > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not check this property."
+		dumpOutput
+	else
+		RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+		echo " INFO: Number of DIRs: $RES"
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking family rows."
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_FAMILYROWS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of family rows: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the number of 2048 bit keys that can be loaded"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_KEYS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of 2048 bit keys that can be loaded: $RES"
+		fi
+	fi
+
+	echo "Checking the manufacturer's identifier"
+	getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MANUFACTURER > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not check this property."
+		dumpOutput
+	else
+		RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+		echo " INFO: Manufacturer identifier: $RES"
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of authorization sessions the TPM supports"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_AUTHSESS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of authorization sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of saved session slots"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_CONTEXT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of saved session slots: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum of monotonic counters"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_COUNTERS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of monotonic counters: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of 2048 bit keys the TPM supports"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MAX_KEYS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of 2048 bit keys: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of available sessions that the TPM supports"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MAX_SESSIONS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of available sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum number of transport sessions that the TPM supports"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MAX_TRANSESS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum number of available transport sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the minimum amount of time for counter increments"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MIN_COUNTER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Minimum amount of time (in .1 s) for counter incs,: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking whether TPM has an owner"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_OWNER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: TPM has an owner: $RES"
+		fi
+	fi
+
+	echo "Checking the number of PCR registers of this TPM"
+	getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_PCR > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not check this property."
+		dumpOutput
+	else
+		RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+		echo " INFO: Number of PCR registers: $RES"
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the number of available DAA sessions"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_SESSION_DAA > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of available sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the number of available sessions"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_SESSIONS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of available sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the startup effects"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_STARTUP_EFFECT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Startup effects: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the timeouts"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_DURATION > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 " " $10 " " $11 }'`
+			echo " INFO: Timeouts: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the timeouts"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_TIS_TIMEOUT > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 " " $10 " " $11 " " $12 }'`
+			echo " INFO: Interface Timeouts: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the number of transport sessions the TPM can currently support"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_TRANSESS > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Number of currently supported transport sessions: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the active counter"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_ACTIVE_COUNTER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Currently active counter: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the maximum of NV RAM that is available"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_MAX_NV_AVAILABLE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Maximum available NV RAM: $RES"
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Checking the size of the TPM input buffer"
+		getcapability $PARM -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_INPUT_BUFFER > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not check this property."
+			dumpOutput
+		else
+			RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+			echo " INFO: Size of the input buffer: $RES"
+		fi
+	fi
+}
+
+
+doTestSetCapability ()
+{
+	echo ""
+	echo ""
+	echo "Doing some tests with SetCapability"
+	echo ""
+	OWNER_PASSWORD=$1
+
+#	doTestSetCapFlag "Disabled" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_DISABLE \
+#	                 $FALSE \
+#	                 checkTPMDisabled \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Ownership" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_OWNERSHIP \
+#	                 $FALSE \
+#	                 checkTPMOwnership \
+#	                 $OWNER_PASSWORD
+
+	doTestSetCapFlag "Read Pubek" \
+	                 $TPM_SET_PERM_FLAGS \
+	                 $TPM_PF_READPUBEK \
+	                 $FALSE \
+	                 checkTPMReadPubek \
+	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Deactivated" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_DEACTIVATED \
+#	                 $FALSE \
+#	                 checkTPMDeactivated \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Disable Owner Clear" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_DISABLEOWNERCLEAR \
+#	                 $FALSE \
+#	                 checkTPMDisableOwnerClear \
+#	                 $OWNER_PASSWORD
+
+	doTestSetCapFlagOnce "Allow Maintenance" \
+	                 $TPM_SET_PERM_FLAGS \
+	                 $TPM_PF_ALLOWMAINTENANCE \
+	                 $FALSE \
+	                 checkTPMAllowMaintenance \
+	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "PhysicalPresenceLifetimeLock" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_PHYSICALPRESENCELIFETIMELOCK \
+#	                 $FALSE \
+#	                 checkTPMPhysicalPresenceLifetimeLock \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "PhysicalPresenceHWEnable" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_PHYSICALPRESENCEHWENABLE \
+#	                 $FALSE \
+#	                 checkTPMPhysicalPresenceHWEnable \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "PhysicalPresenceCMDEnable" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_PHYSICALPRESENCECMDENABLE \
+#	                 $TRUE \
+#	                 checkTPMPhysicalPresenceCMDEnable \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "NVLocked" \
+#	                 $TPM_SET_PERM_FLAGS \
+#	                 $TPM_PF_NV_LOCKED \
+#	                 $FALSE \
+#	                 checkTPMNVLocked \
+#	                 $OWNER_PASSWORD
+
+	doTestSetCapFlag "ReadSRKPub" \
+	                 $TPM_SET_PERM_FLAGS \
+	                 $TPM_PF_READSRKPUB \
+	                 $FALSE \
+	                 checkTPMReadSRKPub \
+	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "TPMEstablished" \
+#	                 $TPM_SET_STCLEAR_FLAGS \
+#	                 $TPM_PF_TPMESTABLISHED \
+#	                 $FALSE \
+#	                 checkTPMTPMEstablished \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Restrict Delegate" \
+#	                 $TPM_SET_PERM_DATA \
+#	                 $TPM_PD_RESTRICTDELEGATE \
+#	                 10 \
+#	                 checkTPMRestrictDelegate \
+#	                 $OWNER_PASSWORD
+
+	doTestSetCapFlagOnce "Disable Force Clear" \
+	                 $TPM_SET_STCLEAR_FLAGS \
+	                 $TPM_SF_DISABLEFORCECLEAR \
+	                 $TRUE \
+	                 checkTPMDisableForceClear \
+	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Physical Presence" \
+#	                 $TPM_SET_STCLEAR_FLAGS \
+#	                 $TPM_SF_PHYSICALPRESENCE \
+#	                 $TRUE \
+#	                 checkTPMPhysicalPresence \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "Physical Presence Lock" \
+#	                 $TPM_SET_STCLEAR_FLAGS \
+#	                 $TPM_SF_PHYSICALPRESENCELOCK \
+#	                 $FALSE \
+#	                 checkTPMPhysicalPresenceLock \
+#	                 $OWNER_PASSWORD
+
+#	doTestSetCapFlag "TOS Present" \
+#	                 $TPM_SET_STANY_FLAGS \
+#	                 $TPM_AF_TOSPRESENT \
+#	                 $FALSE \
+#	                 checkTPMTOSPresent \
+#	                 $OWNER_PASSWORD
+
+	doTestSetCapFlag "Deferred Physical Presence" \
+	                 $TPM_SET_STCLEAR_DATA \
+	                 $TPM_SD_DEFERREDPHYSICALPRESENCE \
+	                 $TRUE \
+	                 none \
+	                 $OWNER_PASSWORD
+
+}
+
+
+doTestSetCapFlag ()
+{
+	TEXT=$1
+	CAPAREA=$2
+	SUBCAP=$3
+	FINALVALUE=$4
+	CHECKROUTINE=$5
+	OWNER_PASSWORD=$6
+	if [ "$OWNER_PASSWORD" != "" ]; then
+		PARM="-pwdo $OWNER_PASSWORD"
+	else
+		PARM=""
+	fi
+	echo ""
+	echo "Enabling the permanent flag '$TEXT'."
+	./setcapability $PARM -cap $CAPAREA -scap $SUBCAP -val $TRUE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not enable the '$TEXT' flag"
+		dumpOutput
+	else
+		echo " INFO: Successfully enabled the '$TEXT' flag"
+
+		if [ "$CHECKROUTINE" != "none" ]; then
+			echo "Checking the state of the '$TEXT' flag"
+			$CHECKROUTINE
+			RESULT=$?
+			if [ $RESULT -eq 1 ]; then
+				echo " INFO: The '$TEXT' flag has been set."
+			else
+				echo " ERROR: The '$TEXT' flag has not been set."
+				dumpOutput
+			fi
+		fi
+
+		echo "Disabling the permanent flag '$TEXT'."
+		./setcapability $PARM -cap $CAPAREA -scap $SUBCAP -val $FALSE > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not disable the '$TEXT' flag"
+			dumpOutput
+		else
+			echo " INFO: Successfully disabled the '$TEXT' flag."
+
+			if [ "$CHECKROUTINE" != "none" ]; then
+				echo "Checking the state of the '$TEXT' flag"
+				$CHECKROUTINE
+				RESULT=$?
+				if [ $RESULT -eq 0 ]; then
+					echo " INFO: The '$TEXT' flag has been cleared."
+				else
+					echo " ERROR: The '$TEXT' flag has not been cleared."
+					dumpOutput
+				fi
+			fi
+		fi
+		echo "Setting the flag '$TEXT' to its final value: $FINALVALUE."
+		./setcapability $PARM -cap $CAPAREA -scap $SUBCAP -val $FINALVALUE > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully set the flag '$TEXT' to '$FINALVALUE'"
+		else
+			echo " ERROR: Could not set the flag '$TEXT' to '$FINALVALUE'"
+			dumpOutput
+		fi
+	fi
+
+}
+
+doTestSetCapFlagOnce ()
+{
+	TEXT=$1
+	CAPAREA=$2
+	SUBCAP=$3
+	TESTVALUE=$4
+	CHECKROUTINE=$5
+	OWNER_PASSWORD=$6
+	if [ "$OWNER_PASSWORD" != "" ]; then
+		PARM="-pwdo $OWNER_PASSWORD"
+	else
+		PARM=""
+	fi
+	echo ""
+	echo "Enabling the permanent flag '$TEXT'."
+#	echo "./setcapability $PARM -cap $CAPAREA -scap $SUBCAP -val $TRUE"
+	./setcapability $PARM -cap $CAPAREA -scap $SUBCAP -val $TESTVALUE > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not set the '$TEXT' flag to '$TESTVALUE'"
+		dumpOutput
+	else
+		echo " INFO: Successfully set the '$TEXT' flag to '$TESTVALUE'"
+
+		echo "Checking the state of the '$TEXT' flag"
+		$CHECKROUTINE
+		RESULT=$?
+		if [ $RESULT -eq $TESTVALUE ]; then
+			echo " INFO: The '$TEXT' flag has been set to '$TESTVALUE'."
+		else
+			echo " ERROR: The '$TEXT' flag has not been set to '$TESTVALUE'."
+			dumpOutput
+		fi
+	fi
+}
+
+### Check whether a given NV RAM Index exists. If it does, return '1', '0'
+### otherwise
+checkNVIndexAvailable ()
+{
+	_PARM=$2
+	_NVINDEX=$1
+	getcapability $_PARM -cap $TPM_CAP_NV_LIST > run.out
+	RESULT=`grep  "0x$_NVINDEX" run.out`
+	if [ "$RESULT" != "" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTransportSupportsCTR ()
+{
+	local PARM=$1
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 4 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		return 0
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			return 0
+		else
+			return 1
+		fi
+	fi
+}
+
+checkTransportSupportsOFB ()
+{
+	local PARM=$1
+	getcapability $PARM -cap $TPM_CAP_TRANS_ES -scap 5 > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		return 0
+	else
+		ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$ERR" == "FALSE" ]; then
+			return 0
+		else
+			return 1
+		fi
+	fi
+}
+
+checkTPMDisabled ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Disabled:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkKeyInTPM ()
+{
+	getcapability -cap $TPM_CAP_KEY_HANDLE > run.out
+	HANDLE=$1
+	_RESULT=`grep -E "$HANDLE" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "$HANDLE" ]; then
+		return 1
+	fi
+	return 0
+}
+
+checkOrdImplemented()
+{
+	getcapability -cap $TPM_CAP_ORD -scap $1 > run.out
+	ERR=`grep "Result for" run.out | gawk '{ print $9 }'`
+	if [ "$ERR" == "FALSE" ]; then
+		return 0
+	fi
+	return 1
+}
+
+checkTransportInTPM ()
+{
+	HANDLE=$1
+	if [ "$HANDLE" == "" ]; then
+		return 0
+	fi
+
+	getcapability -cap $TPM_CAP_HANDLE -scap $TPM_RT_TRANS > run.out
+	_RESULT=`grep -E "$HANDLE" run.out | gawk '{ print $10 }'`
+	if [ "$_RESULT" == "$HANDLE" ]; then
+		return 1
+	fi
+	_RESULT=`grep -E "$HANDLE" run.out | gawk '{ print $2 }'`
+	if [ "$_RESULT" == "$HANDLE" ]; then
+		return 1
+	fi
+	return 0
+}
+
+checkAuthInTPM ()
+{
+	HANDLE=$1
+	getcapability -cap $TPM_CAP_HANDLE -scap $TPM_RT_AUTH > run.out
+	_RESULT=`grep -E "$HANDLE" run.out | gawk '{ print $10 }'`
+	if [ "$_RESULT" == "$HANDLE" ]; then
+		return 1
+	fi
+	_RESULT=`grep -E "$HANDLE" run.out | gawk '{ print $2 }'`
+	if [ "$_RESULT" == "$HANDLE" ]; then
+		return 1
+	fi
+	return 0
+}
+
+checkVTPM ()
+{
+	getcapability -cap $TPM_CAP_MFR -scap $TPM_CAP_PROP_MAX_INSTANCES > run.out
+	RES=$?
+	if [ $RES -eq 0 ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMOwnership ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Ownership:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMDeactivated ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Deactivated:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMReadPubek ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Read Pubek:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMDisableOwnerClear ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Disable Owner Clear:" run.out | gawk '{ print $4}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMAllowMaintenance ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Allow Maintenance:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMFIPS ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "FIPS:" run.out | gawk '{ print $2 }'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMOperator ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Operator:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMEnableRevokeEK ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Enable Revoke EK:" run.out | gawk '{ print $4}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMNVLocked ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "NV Locked:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMReadSRKPub ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Read SRK pub:" run.out | gawk '{ print $4}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMTPMEstablished ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "TPM established:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMTPMpost ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "TPMpost:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMTPMpostLock ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "TPMpost Lock:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMCEKPUsed ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "CEKPUsed:" run.out | gawk '{ print $2}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMDisableForceClear ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x109 > run.out
+	_RESULT=`grep -E "Disable ForceClear:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMDeferredPhysicalPresence ()
+{
+	return 1
+}
+
+checkTPMPhysicalPresence ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x109 > run.out
+	_RESULT=`grep -E "Physical Presence:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMPhysicalPresenceLifetimeLock ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x108 > run.out
+	_RESULT=`grep -E "Physical Presence Lifetime Lock:" run.out | gawk '{ print $5}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMPhysicalPresenceLock ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x109 > run.out
+	_RESULT=`grep -E "Physical Presence Lock:" run.out | gawk '{ print $4}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkTPMGlobalLock ()
+{
+	getcapability -cap $TPM_CAP_FLAG -scap 0x109 > run.out
+	_RESULT=`grep -E "bGlobal Lock:" run.out | gawk '{ print $3}'`
+	if [ "$_RESULT" == "" ]; then
+		echo " ERROR: Parser error when reading capability"
+	fi
+	if [ "$_RESULT" == "TRUE" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+checkDALogic ()
+{
+	echo "Checking dictionary attack status for entity type $1."
+	getcapability -cap $TPM_CAP_DA_LOGIC -scap $1 >run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		cat run.out
+	else
+		echo "Could not read TPM_CAP_DA_LOGIC."
+	fi
+}
+
+checkDALogicLimited ()
+{
+	setcapability -pwdo $2 \
+	              -cap $TPM_SET_PERM_FLAGS \
+	              -scap $TPM_PF_DISABLEFULLDALOGICINFO -val 1 > run.out
+	checkDALogic $1
+	setcapability -pwdo $2 \
+	              -cap $TPM_SET_PERM_FLAGS \
+	              -scap $TPM_PF_DISABLEFULLDALOGICINFO -val 0 > run.out
+}
+
+getNumPCRS ()
+{
+	local RES=0
+	getcapability -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_PCR > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		return 0
+	else
+		RES=`grep "Result for" run.out | gawk '{ split($9,val,"="); print val[1] }'`
+	fi
+	return $RES
+}
+
+checkTPMhasOwner()
+{
+	local rc=0
+	getcapability -cap $TPM_CAP_PROPERTY -scap $TPM_CAP_PROP_OWNER > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not check for owner."
+		dumpOutput
+	else
+		RES=`grep "Result for" run.out | gawk '{ print $9 }'`
+		if [ "$RES" == "TRUE" ]; then
+			rc=1
+		fi
+	fi
+	return $rc
+}

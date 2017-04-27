@@ -1,0 +1,395 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_counters 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+doCounterTest_Create4Counters ()
+{
+	echo "Creating 1st counter"
+	./counter_create -pwdo $OWNER_PASSWORD \
+	                 -la $COUNTER1_LABEL \
+	                 -pwdc $COUNTER1_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not create the counter. Leaving counter test."
+		dumpOutput
+		return 1
+	else
+		COUNTER1_ID=`grep -E "New counter" run.out | gawk '{print $4}'`
+		COUNTER1_VALUE=`grep -E "Counter start" run.out | gawk '{print $4}'`
+		echo " INFO: Successfully created counter with id $COUNTER1_ID."
+		echo "       Initial value: $COUNTER1_VALUE"
+	fi
+
+	echo "Creating 2nd counter"
+	./counter_create -pwdo $OWNER_PASSWORD \
+	                 -la $COUNTER2_LABEL \
+	                 -pwdc $COUNTER2_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not create the counter. Leaving counter test."
+		dumpOutput
+		return 1
+	else
+		COUNTER2_ID=`grep -E "New counter" run.out | gawk '{print $4}'`
+		COUNTER2_VALUE=`grep -E "Counter start" run.out | gawk '{print $4}'`
+		echo " INFO: Successfully created counter with id $COUNTER2_ID."
+		echo "       Initial value: $COUNTER2_VALUE"
+	fi
+
+	echo "Creating 3rd counter"
+	./counter_create -pwdo $OWNER_PASSWORD \
+	                 -la $COUNTER3_LABEL \
+	                 -pwdc $COUNTER3_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not create the counter. Leaving counter test."
+		dumpOutput
+		return 1
+	else
+		COUNTER3_ID=`grep -E "New counter" run.out | gawk '{print $4}'`
+		COUNTER3_VALUE=`grep -E "Counter start" run.out | gawk '{print $4}'`
+		echo " INFO: Successfully created counter with id $COUNTER3_ID."
+		echo "       Initial value: $COUNTER3_VALUE"
+	fi
+
+	echo "Creating 4th counter"
+	./counter_create -pwdo $OWNER_PASSWORD \
+	                 -la $COUNTER4_LABEL \
+	                 -pwdc $COUNTER4_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not create the counter. Leaving counter test."
+		dumpOutput
+		return 1
+	else
+		COUNTER4_ID=`grep -E "New counter" run.out | gawk '{print $4}'`
+		COUNTER4_VALUE=`grep -E "Counter start" run.out | gawk '{print $4}'`
+		echo " INFO: Successfully created counter with id $COUNTER4_ID."
+		echo "       Initial value: $COUNTER4_VALUE"
+	fi
+}
+
+#This function is expected to fail incrementing the
+#counter
+doCounterTest_Inc1of4Counters_Fail ()
+{
+	echo ""
+	echo "Attempting to increment the counter with ID $1."
+	./counter_increment -ix $1 \
+	                    -pwdc $2 > run.out
+	if [ $? -eq 0 ]; then 
+		echo " ERROR: Could incremented the counter."
+		COUNTER1_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER1_VALUE"
+		dumpOutput
+	else
+		echo " INFO: Could not increment the counter."
+	fi
+
+}
+
+
+doCounterTest_Read4Counters ()
+{
+
+
+	echo ""
+	echo "Reading the 1st counter."
+	./counter_read   -ix $COUNTER1_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER1_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER1_VALUE"
+	fi
+
+	echo "Reading the 2nd counter."
+	./counter_read   -ix $COUNTER2_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER2_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER2_VALUE"
+	fi
+
+	echo "Reading the 3rd counter."
+	./counter_read   -ix $COUNTER3_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER3_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER3_VALUE"
+	fi
+
+	echo "Reading the 4th counter."
+	./counter_read   -ix $COUNTER4_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER4_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER4_VALUE"
+	fi
+}
+
+doCounterTest_Release4Counters ()
+{
+	echo ""
+
+	echo "Releasing the 1st counter."
+	./counter_release -ix $COUNTER1_ID \
+	                  -pwdc $COUNTER1_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+
+	echo "Releasing the 2nd counter."
+	./counter_release -ix $COUNTER2_ID \
+	                  -pwdc $COUNTER2_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+
+	echo "Releasing the 3rd counter."
+	./counter_release -ix $COUNTER3_ID \
+	                  -pwdc $COUNTER3_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+	echo "Releasing the 4th counter."
+	./counter_release -ix $COUNTER4_ID \
+	                  -pwdc $COUNTER4_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+}
+
+
+doCounterTest_ReleaseOwner4Counters ()
+{
+	echo ""
+	echo "Releasing the 1st counter"
+	./counter_release -pwdo $OWNER_PASSWORD \
+	                  -ix $COUNTER1_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+	echo "Releasing the 2nd counter"
+	./counter_release -pwdo $OWNER_PASSWORD \
+	                  -ix $COUNTER2_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+	echo "Releasing the 3rd counter"
+	./counter_release -pwdo $OWNER_PASSWORD \
+	                  -ix $COUNTER3_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+	echo "Releasing the 4th counter"
+	./counter_release -pwdo $OWNER_PASSWORD \
+	                  -ix $COUNTER4_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+}
+
+### Test the counters
+doCounterTest ()
+{
+	echo ""
+	echo "Creating a counter."
+	./counter_create -pwdo $OWNER_PASSWORD \
+	                 -la $COUNTER1_LABEL \
+	                 -pwdc $COUNTER1_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not create the counter. Leaving counter test."
+		dumpOutput
+		return 1
+	else
+		COUNTER1_ID=`grep -E "New counter" run.out | gawk '{print $4}'`
+		COUNTER1_VALUE=`grep -E "Counter start" run.out | gawk '{print $4}'`
+		echo " INFO: Successfully created counter with id $COUNTER1_ID."
+		echo "       Initial value: $COUNTER1_VALUE"
+	fi
+
+	echo "Reading the counter."
+	./counter_read   -ix $COUNTER1_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER1_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER1_VALUE"
+	fi
+
+	echo "Forward-calculating the incremented counter."
+	./counter_calc_incr -ix $COUNTER1_ID > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read current value of counter"
+		dumpOutput
+	else
+		echo " INFO: Successfully got the expected counter value for after increment."
+		COUNTER1_EXPECTED=`grep -E "Value of the" run.out | gawk '{print $6 }'`
+		echo "       Expected value: $COUNTER1_EXPECTED"
+	fi
+
+	echo "Incrementing the counter."
+	./counter_increment -ix $COUNTER1_ID \
+	                    -pwdc $COUNTER1_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not increment the counter."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully incremented the counter."
+		COUNTER1_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER1_VALUE"
+		if [ "$COUNTER1_VALUE" != "$COUNTER1_EXPECTED" ]; then
+			echo " ERROR: Does not match expected value of $COUNTER1_EXPECTED"
+		else
+			echo "          Matches expected value."
+		fi
+	fi
+
+	echo "Reading the counter."
+	./counter_read   -ix $COUNTER1_ID > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not read the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully read the counter."
+		COUNTER1_VALUE=`grep -E "Value of the" run.out | gawk '{print $5}'`
+		echo "       Current value: $COUNTER1_VALUE"
+	fi
+
+	echo "Releasing the counter."
+	./counter_release -ix $COUNTER1_ID \
+	                  -pwdc $COUNTER1_PASSWORD > run.out
+	if [ $? -ne 0 ]; then 
+		echo " ERROR: Could not release the counter."
+		dumpOutput
+	else
+		echo " INFO: Successfully released the counter."
+	fi
+
+	echo "Releasing the counter a second time."
+	./counter_release -pwdo $OWNER_PASSWORD \
+	                  -ix $COUNTER1_ID > run.out
+	if [ $? -eq 0 ]; then 
+		echo " ERROR: Could release the counter a second time."
+		dumpOutput
+	else
+		echo " INFO: Command completed successfully."
+	fi
+
+	echo "Reading the counter that I released already."
+	./counter_read   -ix $COUNTER1_ID > run.out
+	if [ $? -eq 0 ]; then 
+		echo " ERROR: Could read the counter that was released."
+		dumpOutput
+	else
+		echo " INFO: Command completed successfully."
+	fi
+
+
+	### Create 4 counters
+	doCounterTest_Create4Counters
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create 4 counters."
+		dumpOutput
+	fi
+	doCounterTest_Inc1of4Counters_Fail $COUNTER1_ID $COUNTER1_PASSWORD
+	doCounterTest_Inc1of4Counters_Fail $COUNTER2_ID $COUNTER2_PASSWORD
+	doCounterTest_Inc1of4Counters_Fail $COUNTER3_ID $COUNTER3_PASSWORD
+	doCounterTest_Inc1of4Counters_Fail $COUNTER4_ID $COUNTER4_PASSWORD
+
+	doCounterTest_Read4Counters
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not read 4 counters."
+		dumpOutput
+	fi
+	doCounterTest_Release4Counters
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not release 4 counters."
+		dumpOutput
+	fi
+	doCounterTest_Create4Counters
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create 4 counters."
+		dumpOutput
+	fi
+	doCounterTest_ReleaseOwner4Counters
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not release 4 counters using owner password."
+		dumpOutput
+	fi
+	
+}

@@ -1,0 +1,579 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_identity 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test Identity functions
+doIdentityTest ()
+{
+	echo ""
+	echo "Creating and activating an identity."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwdk $IDENTITY_PASSWORD \
+	           -pwds $SRK_PASSWORD \
+	           -ac > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	check_audit_digest
+
+	echo "Creating and activating an identity. Using no identity password."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwds $SRK_PASSWORD \
+	           -ac > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	check_audit_digest
+
+	echo "Creating and activating an identity using TPM_EK_BLOB."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwdk $IDENTITY_PASSWORD \
+	           -pwds $SRK_PASSWORD \
+	           -ac \
+	           -ekb > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	check_audit_digest
+
+	echo "Creating and activating an identity using TPM_EK_BLOB. Using no identity"
+	echo "password."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwds $SRK_PASSWORD \
+	           -ac \
+	           -ekb > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+
+		echo "Creating and activating an identity using TPM_EK_BLOB. Using no identity"
+		echo "password. Using a TPM_KEY12 on input."
+		identity -v12 \
+		         -pwdo $OWNER_PASSWORD \
+		         -la $IDENTITY_LABEL \
+		         -pwds $SRK_PASSWORD \
+		         -ac \
+		         -ekb > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not create and/or activate identity."
+			dumpOutput
+		else
+			echo " INFO: Successfully created and activated identity."
+		fi
+	fi
+
+	echo "Creating an identity and using it to quote"
+	
+	echo "Creating an identity"
+	identity -pwdo $OWNER_PASSWORD      \
+			-la $IDENTITY_LABEL \
+	                -pwdk $IDENTITY_PASSWORD \
+			-pwds $SRK_PASSWORD \
+	                -ok $SIGNINGKEY_FILENAME > run.out
+	if [ $? -ne 0 ]; then
+	    echo " ERROR: Could not create identity."
+	    dumpOutput
+	else
+	    echo " INFO: Successfully created identity."
+	fi
+	
+ 	echo "Loading an identity key"
+	loadkey -hp $SRK_HANDLE \
+		-ik $SIGNINGKEY_FILENAME.key \
+		-pwdp $SRK_PASSWORD > run.out
+
+	if [ $? -ne 0 ]; then
+	    echo " ERROR: Could not load identity key into TPM."
+	    dumpOutput
+	else
+	    IDKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+	    echo " INFO: Loaded identity key into TPM. Handle is $IDKEY_HANDLE"
+	fi
+
+	echo "Quoting some PCRs; using identity key"
+	quote -hk $IDKEY_HANDLE -bm 1f -pwdk $IDENTITY_PASSWORD > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while quoting PCRs."
+		dumpOutput
+	else
+		echo " INFO: Quoting PCRs was successful."
+	fi
+}
+
+### Test Identity functions
+doIdentityTest_noSRKPwd ()
+{
+	echo ""
+	echo "Creating and activating an identity."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwdk $IDENTITY_PASSWORD \
+	           -ac > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	echo "Creating and activating an identity. Using no identity password."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -ac > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	echo "Creating and activating an identity using TPM_EK_BLOB."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -pwdk $IDENTITY_PASSWORD \
+	           -ac \
+	           -ekb > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+
+	echo "Creating and activating an identity using TPM_EK_BLOB. Using no "
+	echo "identity password."
+	identity -pwdo $OWNER_PASSWORD \
+	           -la $IDENTITY_LABEL \
+	           -ac \
+	           -ekb > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create and/or activate identity."
+		dumpOutput
+	else
+		echo " INFO: Successfully created and activated identity."
+	fi
+}
+
+
+doCertifyKeyTest ()
+{
+	echo ""
+	echo "Certifying 2nd storage key with legacy key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $LEGACYKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $LEGACYKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with legacy key w/o password."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $LEGACYKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with signing key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $SIGNINGKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $SIGNINGKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with (INFO) signing key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $SIGNINGKEY_INFO_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $SIGNINGKEY_INFO_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with signing key w/o password."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $SIGNINGKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with binding key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $BINDINGKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $BINDINGKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command ($ERR) "
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with binding key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with binding key w/o password."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $BINDINGKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command ($ERR) "
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with binding key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with migration key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $MIGRATIONKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $MIGRATIONKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with migration key w/o password."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $MIGRATIONKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: ERROR: Could Certify key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with 1st storage key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $STORAGEKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+             $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with storage key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with 1st storage key w/o password"
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $STORAGEKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+             $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with storage key "
+		dumpOutput
+	fi
+}
+
+doCertifyKeyTest_CMK ()
+{
+	echo ""
+	echo "Certifying 2nd storage key with CMK legacy key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $CMK_LEGACYKEY_PASSWORD \
+	           -msa msalist.bin \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_LEGACYKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	echo "Certifying 2nd storage key with CMK legacy key w/o pwd."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_LEGACYKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+
+	check_audit_digest
+
+	echo "Certifying 2nd storage key with CMK signing key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $CMK_SIGNINGKEY_PASSWORD \
+	           -msa msalist.bin \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_SIGNINGKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+
+	echo "Certifying 2nd storage key with CMK signing key w/o pwd."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_SIGNINGKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not certify 2nd storage key ($ERR)."
+		dumpOutput
+	else
+		echo " INFO: Successfully certified 2nd storage key."
+	fi
+
+	check_audit_digest
+
+
+	echo "Certifying 2nd storage key with CMK binding key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $CMK_BINDINGKEY_PASSWORD \
+	           -msa msalist.bin \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_BINDINGKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Unexpected return code ($ERR)."
+		dumpOutput
+	fi
+
+
+
+	echo "Certifying 2nd storage key with CMK binding key w/o pwd."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_BINDINGKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with binding key "
+		dumpOutput
+	fi
+
+
+	check_audit_digest
+
+	echo "Certifying 2nd storage key with CMK migration key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $CMK_MIGRATIONKEY_PASSWORD \
+	           -msa msalist.bin \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_MIGRATIONKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key "
+		dumpOutput
+	fi
+
+	echo "Certifying 2nd storage key with CMK migration key w/o pwd."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_MIGRATIONKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+	     $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key "
+		dumpOutput
+	fi
+
+	check_audit_digest
+
+	echo "Certifying 2nd storage key with CMK storage key."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -pwdc $CMK_STORAGEKEY_PASSWORD \
+	           -msa msalist.bin \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_STORAGEKEY_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+             $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with storage key "
+		dumpOutput
+	fi
+
+
+	echo "Certifying 2nd storage key with CMK storage key w/o pwd."
+	certifykey -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	           -hk $SECOND_STORAGEKEY_HANDLE \
+	           -hc $CMK_STORAGEKEY_NOPWD_HANDLE \
+	           -of certifyinfoblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE -o \
+             $ERR -eq $TPM_BAD_KEY_PROPERTY -o \
+	     $ERR -eq $TPM_INAPPROPRIATE_SIG ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -ne 0 ]; then
+		echo " WARN: Successfully completed command with unexpected return code $ERR "
+	else
+		echo " ERROR: Could Certify key with storage key "
+		dumpOutput
+	fi
+}

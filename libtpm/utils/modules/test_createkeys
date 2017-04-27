@@ -1,0 +1,1569 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_createkeys 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+createAllKeys ()
+{
+	if [ "$TPM_IS_FIPS" == "0" -a "$TPM_VERSION" != "11" ]; then
+		REMEMBER_TPM_ET_ENCRYPT_AES=$TPM_ET_ENCRYPT_AES
+
+		getcapability -cap $TPM_CAP_AUTH_ENCRYPT -scap 9 > run.out
+		ERR=`grep "Result for" run.out | gawk '{print $9}' `
+		if [ "$ERR" == "TRUE" ]; then
+			echo ""
+			echo "Switching to AUTHDATA encryption with AES."
+			echo ""
+			TPM_ET_ENCRYPT_AES=1
+		fi
+	fi
+	createLegacyKeys
+	createSigningKeys
+	createBindingKeys
+	createMigrationKeys
+	createStorageKeys_noPwd
+	createStorageKeys
+	# the HW TPMs will likely fail when creating RSA keys without the default exponent
+	if [ "$USE_HWTPM" == "0" ]; then 
+	    createExponentKeys
+	fi
+	if [ "$TPM_IS_FIPS" == "0" -a "$TPM_VERSION" != "11" ]; then
+		getcapability $TPM_CAP_AUTH_ENCRYPT 9 > run.out
+		ERR=`grep "Result for" run.out | gawk '{print $9}' `
+		if [ "$ERR" == "TRUE" ]; then
+			echo ""
+			echo "Turning off AUTHDATA encryption with AES."
+			echo ""
+		fi
+		TPM_ET_ENCRYPT_AES=$REMEMBER_TPM_ET_ENCRYPT_AES
+	fi
+}
+
+createAllKeys_CMK ()
+{
+	if [ "$TPM_VERSION" != "11" ]; then
+		createCMKKeys
+		ERR=$?
+		return $ERR
+	else
+		return 0
+	fi
+}
+
+createLegacyKeys ()
+{
+	echo ""
+	echo "Creating a legacy key"
+
+	createkey $LOADKEY_VERSION -kt l \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $LEGACYKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $LEGACYKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create legacy key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created legacy key."
+
+		echo "Loading legacy key into TPM. ($LOADKEY_VERSION)"
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $LEGACYKEY_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load legacy key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			LEGACYKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded legacy key into TPM. Handle is $LEGACYKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a legacy key without a password"
+	createkey $LOADKEY_VERSION -kt l \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $LEGACYKEY_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create legacy key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created legacy key without password."
+
+		echo "Loading legacy key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $LEGACYKEY_NOPWD_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load legacy key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			LEGACYKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded legacy key into TPM. Handle is $LEGACYKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a non-migrateable legacy key"
+	#set -x
+	createkey $LOADKEY_VERSION -kt l \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $LEGACYKEY_NM_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $LEGACYKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create legacy key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created legacy key."
+
+		echo "Loading legacy key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $LEGACYKEY_NM_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load legacy key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			LEGACYKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded legacy key into TPM. Handle is $LEGACYKEY_NM_HANDLE"
+		fi
+	fi
+}
+
+createMigrationKeys ()
+{
+	echo ""
+	echo "Creating a migration key"
+	createkey $LOADKEY_VERSION -kt m \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $MIGRATIONKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ok $MIGRATIONKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create migration key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created migration key."
+
+		echo "Loading migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $MIGRATIONKEY_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load migration key into TPM."
+			dumpOutput
+			return 1
+		else
+			MIGRATIONKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded migration key into TPM. Handle is $MIGRATIONKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating a migration key without password"
+	createkey $LOADKEY_VERSION -kt m \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ok $MIGRATIONKEY_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create migration key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created migration key."
+
+		echo "Loading migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $MIGRATIONKEY_NOPWD_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load migration key into TPM."
+			dumpOutput
+			return 1
+		else
+			MIGRATIONKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded migration key into TPM. Handle is $MIGRATIONKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+	echo "Creating a non-migrateable migration key"
+	#set -x
+	createkey $LOADKEY_VERSION -kt l \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $MIGRATIONKEY_NM_PASSWORD \
+	          -ok $MIGRATIONKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create migration key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created migration key."
+
+		echo "Loading migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $MIGRATIONKEY_NM_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load migration key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			MIGRATIONKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded migration key into TPM. Handle is $MIGRATIONKEY_NM_HANDLE"
+		fi
+	fi
+}
+
+createStorageKeys ()
+{
+	echo ""
+	echo "Creating a storage key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $STORAGEKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $STORAGEKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created storage key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully create storage key."
+
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $STORAGEKEY_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			STORAGEKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded storage key into TPM. Handle is $STORAGEKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating 2nd storage key using 1st storage key as parent."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $STORAGEKEY_PASSWORD \
+	          -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $SECOND_STORAGEKEY_FILENAME \
+	          -hp $STORAGEKEY_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create 2nd storage key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created 2nd storage key."
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_HANDLE \
+		          -ik $SECOND_STORAGEKEY_FILENAME.key \
+		          -pwdp $STORAGEKEY_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SECOND_STORAGEKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded 2nd storage key into TPM. Handle is $SECOND_STORAGEKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating a non-migrateable storage key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $STORAGEKEY_NM_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $STORAGEKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created storage key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully create storage key."
+
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $STORAGEKEY_NM_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			STORAGEKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded non-migrateable storage key into TPM. Handle is $STORAGEKEY_NM_HANDLE"
+		fi
+	fi
+}
+
+createSigningKeys ()
+{
+	echo ""
+	echo "Creating signing key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt s \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $SIGNINGKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating signing key w/o pwd using SRK as parent."
+	createkey $LOADKEY_VERSION -kt s \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_NOPWD_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating non-migrateable signing key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt s \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $SIGNINGKEY_NM_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created non-mig. signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_NM_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_NM_HANDLE"
+		fi
+	fi
+}
+
+createAdditionalSigningKeys ()
+{
+	echo ""
+	echo "Creating signing key (with DER signing scheme) using SRK as parent."
+	createkey $LOADKEY_VERSION -kt d \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $SIGNINGKEY_DER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_DER_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_DER_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_DER_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_DER_HANDLE"
+		fi
+	fi
+
+	echo "Creating signing key (with INFO signing scheme) using SRK as parent."
+	createkey $LOADKEY_VERSION -kt i \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $SIGNINGKEY_INFO_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $SIGNINGKEY_INFO_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create signing key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		          -ik $SIGNINGKEY_INFO_FILENAME.key \
+		          -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			SIGNINGKEY_INFO_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_INFO_HANDLE"
+		fi
+	fi
+}
+
+createBindingKeys ()
+{
+	echo ""
+	echo "Creating a binding key"
+	createkey $LOADKEY_VERSION -kt b \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $BINDINGKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $BINDINGKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create binding key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created binding key."
+
+		echo "Loading binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $BINDINGKEY_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load binding key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			BINDINGKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded binding key into TPM. Handle is $BINDINGKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a binding key without password"
+	createkey $LOADKEY_VERSION -kt b \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $BINDINGKEY_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create binding key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created binding key."
+
+		echo "Loading binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $BINDINGKEY_NOPWD_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load binding key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			BINDINGKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded binding key into TPM. Handle is $BINDINGKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a non-migrateable binding key"
+	#set -x
+	createkey $LOADKEY_VERSION -kt b \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $BINDINGKEY_NM_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $BINDINGKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create non-migrateable binding key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created non-migrateable binding key."
+
+		echo "Loading binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $BINDINGKEY_NM_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load binding key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			BINDINGKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded binding key into TPM. Handle is $BINDINGKEY_NM_HANDLE"
+		fi
+	fi
+
+}
+
+createAdditionalBindingKeys ()
+{
+	echo ""
+	echo "Creating a binding key that uses PKCSv15 encryption scheme."
+	createkey $LOADKEY_VERSION -kt b \
+	          -es pkcsv15 \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdk $BINDINGKEY_PKCSV15_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $BINDINGKEY_PKCSV15_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create binding key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created binding key."
+
+		echo "Loading binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $BINDINGKEY_PKCSV15_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load binding key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			BINDINGKEY_PKCSV15_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded binding key into TPM. Handle is $BINDINGKEY_PKCSV15_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a (PKCSv15) binding key without password"
+	createkey $LOADKEY_VERSION -kt b \
+		  -es pkcsv15 \
+	          -pwdp $SRK_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE \
+	          -ok $BINDINGKEY_PKCSV15_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create binding key. Creating no more keys."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created binding key."
+
+		echo "Loading binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $BINDINGKEY_PKCSV15_NOPWD_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load binding key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			BINDINGKEY_PKCSV15_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded binding key into TPM. Handle is $BINDINGKEY_PKCSV15_NOPWD_HANDLE"
+		fi
+	fi
+
+}
+
+createStorageKeys_noPwd ()
+{
+	echo ""
+	echo "Creating a storage key without password."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $SRK_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $STORAGEKEY_NOPWD_FILENAME \
+                  -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create storage key."
+		dumpOutput
+	else
+		echo " INFO: Successfully create storage key."
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $STORAGEKEY_NOPWD_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > loadkey.out
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could no load storage key into TPM."
+			dumpOutput
+		else
+			STORAGEKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Successfully loaded storage key into TPM. Handle = $STORAGEKEY_NOPWD_HANDLE."
+
+			echo "Creating 2nd storage key with previous key as parent."
+			createkey $LOADKEY_VERSION -kt e \
+			          -sz $KEYSIZE_ST \
+			          -ok $SECOND_STORAGEKEY_NOPWD_FILENAME \
+			          -hp $STORAGEKEY_NOPWD_HANDLE > run.out
+			if [ $? -ne 0 ]; then
+				echo " ERROR: Could not create 2nd storage key."
+				dumpOutput
+			else
+				echo " INFO: Successfully created 2nd storage key."
+				echo "Loading the 2nd storage key into the TPM."
+				loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NOPWD_HANDLE \
+				          -ik $SECOND_STORAGEKEY_NOPWD_FILENAME.key > loadkey.out
+				if [ $? -ne 0 ]; then
+					echo " ERROR: Could not load 2nd storage key"
+					dumpOutput
+				else
+					SECOND_STORAGEKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+					echo " INFO: Successfully loaded 2nd storage key into TPM. Handle = $SECOND_STORAGEKEY_NOPWD_HANDLE."
+				fi
+			fi
+		fi
+	fi
+}
+
+
+createKeys_tpm2 ()
+{
+	echo "TPM2: Creating a storage key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdk $TPM2_STORAGEKEY_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $TPM2_STORAGEKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created storage key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created storage key."
+
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $TPM2_STORAGEKEY_FILENAME.key \
+		        -pwdp $TPM2_SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM."
+			dumpOutput
+			return 1
+		else
+			TPM2_STORAGEKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded storage key into TPM. Handle is $TPM2_STORAGEKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a non-migrateable storage key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt e \
+	          -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdk $TPM2_STORAGEKEY_NM_PASSWORD \
+	          -sz $KEYSIZE_ST \
+	          -ok $TPM2_STORAGEKEY_NM_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created storage key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created storage key."
+
+		echo "Loading storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $TPM2_STORAGEKEY_NM_FILENAME.key \
+		        -pwdp $TPM2_SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM."
+			dumpOutput
+			return 1
+		else
+			TPM2_STORAGEKEY_NM_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded storage key into TPM. Handle is $TPM2_STORAGEKEY_NM_HANDLE"
+		fi
+	fi
+
+	echo "Creating a signing key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt s \
+	          -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdk $TPM2_SIGNINGKEY_PASSWORD \
+	          -ok $TPM2_SIGNINGKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created signing key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $TPM2_SIGNINGKEY_FILENAME.key \
+		        -pwdp $TPM2_SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM."
+			dumpOutput
+			return 1
+		else
+			TPM2_SIGNINGKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $TPM2_SIGNINGKEY_HANDLE"
+		fi
+	fi
+
+	echo "Creating a signing key w/o password; using SRK as parent."
+	createkey $LOADKEY_VERSION -kt s \
+	          -pwdp $TPM2_SRK_PASSWORD \
+	          -ok $TPM2_SIGNINGKEY_NOPWD_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created signing key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created signing key."
+
+		echo "Loading signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $TPM2_SIGNINGKEY_NOPWD_FILENAME.key \
+		        -pwdp $TPM2_SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM."
+			dumpOutput
+			return 1
+		else
+			TPM2_SIGNINGKEY_NOPWD_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $TPM2_SIGNINGKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a migration key using SRK as parent."
+	createkey $LOADKEY_VERSION -kt m \
+	          -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdk $TPM2_MIGRATIONKEY_PASSWORD \
+	          -ok $TPM2_MIGRATIONKEY_FILENAME \
+	          -hp $SRK_HANDLE > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not created migration key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully created migration key."
+
+		echo "Loading migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $TPM2_MIGRATIONKEY_FILENAME.key \
+		        -pwdp $TPM2_SRK_PASSWORD > loadkey.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR:Could not load storage key into TPM."
+			dumpOutput
+			return 1
+		else
+			TPM2_MIGRATIONKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded signing key into TPM. Handle is $TPM2_MIGRATIONKEY_HANDLE"
+		fi
+	fi
+
+}
+
+
+createCMKKeys ()
+{
+	echo ""
+	echo ""
+	echo "Getting authorization ticket for migration authority's public keys."
+	rm -rf hmacanddigest.bin msalist.bin > /dev/null
+	cmk_approvema -pwdo $OWNER_PASSWORD \
+	              -of hmacanddigest.bin \
+	              -msa msalist.bin \
+	              -ik $STORAGEKEY_FILENAME.key \
+	              -ik $STORAGEKEY_NM_FILENAME.key \
+	              -ik $SIGNINGKEY_FILENAME.key > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not get authorization ticket. Skipping this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated ticket."
+	fi
+
+
+	echo "Creating a storage key using the SRK as parent."
+	cmk_createkey -kt e \
+	              -pwdp $SRK_PASSWORD \
+	              -pwdk $CMK_STORAGEKEY_SRK_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_STORAGEKEY_SRK_FILENAME \
+		      -hp $SRK_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $CMK_STORAGEKEY_SRK_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_STORAGEKEY_SRK_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_STORAGEKEY_SRK_HANDLE"
+		fi
+	fi
+
+
+
+
+	echo "Creating a storage key using the SRK as parent."
+	cmk_createkey -kt e \
+	              -pwdp $SRK_PASSWORD \
+	              -pwdk $CMK_STORAGEKEY_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_STORAGEKEY_SRK_FILENAME \
+                      -hp $SRK_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		        -ik $CMK_STORAGEKEY_SRK_FILENAME.key \
+		        -pwdp $SRK_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_STORAGEKEY_SRK_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_STORAGEKEY_SRK_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a storage key using the non migrateable storage key as parent."
+	cmk_createkey -kt e \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_STORAGEKEY_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_STORAGEKEY_FILENAME \
+                      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_STORAGEKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_STORAGEKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_STORAGEKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a storage key w/o pwd using the non migrateable storage key as parent."
+	cmk_createkey -kt e \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_STORAGEKEY_NOPWD_FILENAME \
+		      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_STORAGEKEY_NOPWD_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_STORAGEKEY_NOPWD_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_STORAGEKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+
+	echo "Creating a storage key (that I will migrate) using the non migratable"
+	echo "storage key as parent."
+	cmk_createkey -kt e \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_STORAGEKEY2_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if hmacanddigest.bin \
+                      -ok $CMK_STORAGEKEY2_FILENAME \
+		      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create 2nd CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_STORAGEKEY2_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_STORAGEKEY2_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_STORAGEKEY2_HANDLE"
+		fi
+	fi
+
+
+
+	echo "Creating a signing key using the non migratable storage key as parent."
+	cmk_createkey -kt s \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_SIGNINGKEY_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_SIGNINGKEY_FILENAME \
+		      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK signing key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK signing key."
+
+		echo "Loading CMK signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_SIGNINGKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK signing key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_SIGNINGKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_SIGNINGKEY_HANDLE"
+		fi
+	fi
+
+
+
+	echo "Creating a signing key w/o pwd using the non migratable storage key as parent."
+	cmk_createkey -kt s \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_SIGNINGKEY_NOPWD_FILENAME \
+                      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK signing key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK signing key."
+
+		echo "Loading CMK signing key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_SIGNINGKEY_NOPWD_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK signing key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_SIGNINGKEY_NOPWD_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_SIGNINGKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a binding key using the non migratable storage key as parent."
+	cmk_createkey -kt b \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_BINDINGKEY_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+		      -ok $CMK_BINDINGKEY_FILENAME \
+		      -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK binding key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK binding key."
+		echo "Loading CMK binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_BINDINGKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK binding key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_BINDINGKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_BINDINGKEY_HANDLE"
+		fi
+	fi
+
+
+
+	echo "Creating a binding key w/o pwd using the non migratable storage key as parent."
+	cmk_createkey -kt b \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+	              -ok $CMK_BINDINGKEY_NOPWD_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK binding key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK binding key."
+		echo "Loading CMK binding key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_BINDINGKEY_NOPWD_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK binding key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_BINDINGKEY_NOPWD_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $CMK_BINDINGKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+
+	echo "Creating a migration key using the non migratable storage key as parent."
+	cmk_createkey -kt m \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_MIGRATIONKEY_PASSWORD \
+	              -if hmacanddigest.bin \
+	              -ok $CMK_MIGRATIONKEY_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK migration key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK migration key."
+		echo "Loading CMK migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_MIGRATIONKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK migration key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_MIGRATIONKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK migration key into TPM. Handle is $CMK_MIGRATIONKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a migration key w/o pwd using the non migratable storage key as parent."
+	cmk_createkey -kt m \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -if hmacanddigest.bin \
+	              -ok $CMK_MIGRATIONKEY_NOPWD_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK migration key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK migration key."
+		echo "Loading CMK migration key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_MIGRATIONKEY_NOPWD_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK migration key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_MIGRATIONKEY_NOPWD_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK migration key into TPM. Handle is $CMK_MIGRATIONKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+
+
+	echo "Creating a legacy key using the non migratable storage key as parent."
+	cmk_createkey -kt l \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $CMK_LEGACYKEY_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+	              -ok $CMK_LEGACYKEY_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK legacy key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK legacy key."
+		echo "Loading CMK legacy key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_LEGACYKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK legacy key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_LEGACYKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK legacy key into TPM. Handle is $CMK_LEGACYKEY_HANDLE"
+		fi
+	fi
+
+
+	echo "Creating a legacy key w/o pwd using the non migratable storage key as parent."
+	cmk_createkey -kt l \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -sz $KEYSIZE \
+	              -if hmacanddigest.bin \
+	              -ok $CMK_LEGACYKEY_NOPWD_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK legacy key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK legacy key."
+		echo "Loading CMK legacy key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $CMK_LEGACYKEY_NOPWD_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK legacy key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			CMK_LEGACYKEY_NOPWD_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK legacy key into TPM. Handle is $CMK_LEGACYKEY_NOPWD_HANDLE"
+		fi
+	fi
+
+
+}
+
+createKeysCMKMigration () 
+{
+	needKeys
+	needKeys_cmk
+	rm -rf tpm1_hmacanddigest.bin tpm1_msalist.bin > /dev/null
+	echo ""
+	echo "Getting authorization ticket for migration authority's' public keys."
+	rm -rf tpm1_hmacanddigest.bin tpm1_msalist.bin > /dev/null
+	cmk_approvema -pwdo $OWNER_PASSWORD \
+	              -of tpm1_hmacanddigest.bin \
+	              -msa tpm1_msalist.bin \
+	              -ik $STORAGEKEY_NM_FILENAME.key \
+	              -ik $SIGNINGKEY_FILENAME.key \
+	              -ik $TPM2_STORAGEKEY_NM_FILENAME.key \
+	              -ik $TPM2_SIGNINGKEY_FILENAME.key \
+	              -ik $TPM2_SIGNINGKEY_NOPWD_FILENAME.key > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not get authorization ticket. Skipping this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated ticket."
+	fi
+
+	echo "Creating a CMK storage key that I will use only for migration."
+	echo "The parent is the non-mig. storage key."
+
+	echo "Creating a storage key using the non migratable storage key ($STORAGEKEY_NM_HANDLE) as parent."
+	cmk_createkey -kt e \
+	              -pwdp $STORAGEKEY_NM_PASSWORD \
+	              -pwdk $MIGRATIONTEST_CMK_STORAGEKEY_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if tpm1_hmacanddigest.bin \
+	              -ok $MIGRATIONTEST_CMK_STORAGEKEY_FILENAME \
+	              -hp $STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $STORAGEKEY_NM_HANDLE \
+		        -ik $MIGRATIONTEST_CMK_STORAGEKEY_FILENAME.key \
+		        -pwdp $STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+			return 1
+		else
+			MIGRATIONTEST_CMK_STORAGEKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $MIGRATIONTEST_CMK_STORAGEKEY_HANDLE"
+		fi
+	fi
+
+	TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+	TPM_SERVER_PORT=$SLAVE_TPM_PORT
+
+	rm -rf tpm2_hmacanddigest.bin tpm2_msalist.bin > /dev/null
+	echo "Creating ticket on TPM2."
+	cmk_approvema -pwdo $TPM2_OWNER_PASSWORD \
+	              -of tpm2_hmacanddigest.bin \
+	              -msa tpm2_msalist.bin \
+	              -ik $TPM2_STORAGEKEY_NM_FILENAME.key \
+	              -ik $TPM2_SIGNINGKEY_FILENAME.key > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not get authorization ticket. Skipping this test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated ticket."
+	fi
+
+	echo ""
+	echo "Creating non-migratable storage key on 2nd TPM."
+
+	cmk_createkey -kt e \
+	              -pwdp $TPM2_STORAGEKEY_NM_PASSWORD \
+	              -pwdk $TPM2_CMK_STORAGEKEY_PASSWORD \
+	              -sz $KEYSIZE_ST \
+	              -if tpm2_hmacanddigest.bin \
+	              -ok $TPM2_CMK_STORAGEKEY_FILENAME \
+	              -hp $TPM2_STORAGEKEY_NM_HANDLE \
+	              > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not create CMK storage key. Leaving test."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully generated CMK storage key."
+
+		echo "Loading CMK storage key into TPM."
+		loadkey $LOADKEY_VERSION -hp $TPM2_STORAGEKEY_NM_HANDLE \
+		        -ik $TPM2_CMK_STORAGEKEY_FILENAME.key \
+		        -pwdp $TPM2_STORAGEKEY_NM_PASSWORD > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not load CMK storage key key into TPM. Creating no more keys."
+			dumpOutput
+		else
+			TPM2_CMK_STORAGEKEY_HANDLE=0x`cat run.out | grep "New Key Handle" | gawk '{print $5}'`
+			echo " INFO: Loaded CMK storage key into TPM. Handle is $TPM2_CMK_STORAGEKEY_HANDLE"
+		fi
+	fi
+}
+
+createExponentKeys()
+{
+	libtpm-config > run.out
+	DEVICE=`cat run.out | grep "Device" | gawk '{print $3}'`
+	if [ "$DEVICE" == "socket" ]; then
+
+	    echo ""
+	    echo "Test non-default RSA public exponents"
+	    echo ""
+	    
+	    # test valid signing key exponent
+	    for EXPONENT in 3 5 7 17 257 65537
+	      do
+	      
+	      echo "Creating a signing key using valid exponent $EXPONENT."
+	      createkey $LOADKEY_VERSION -kt s \
+		  -pwdp $SRK_PASSWORD \
+		  -pwdk $SIGNINGKEY_PASSWORD \
+		  -pwdm $MIGRATION_PASSWORD \
+		  -sz $KEYSIZE_ST \
+		  -exp $EXPONENT \
+		  -ok $SIGNINGKEY_FILENAME \
+		  -hp $SRK_HANDLE > run.out
+	      if [ $? -ne 0 ]; then
+		  echo " ERROR: Could not create signing key with public exponent $EXPONENT."
+		  dumpOutput
+	      else
+		  echo " INFO: Successfully created signing key with public exponent $EXPONENT."
+	      
+		  echo "Loading a signing key using valid exponent $EXPONENT."
+	      
+		  loadkey $LOADKEY_VERSION -hp $SRK_HANDLE \
+		     -ik $SIGNINGKEY_FILENAME.key \
+		     -pwdp $SRK_PASSWORD > loadkey.out
+	      
+		  if [ $? -ne 0 ]; then
+		     echo " ERROR: Could not load signing key into TPM. Creating no more keys."
+		     dumpOutput
+		  else
+		     cat loadkey.out
+		     SIGNINGKEY_HANDLE=0x`cat loadkey.out | grep "New Key Handle" | gawk '{print $5}'`
+		     echo " INFO: Loaded signing key into TPM. Handle is $SIGNINGKEY_HANDLE"
+		  fi
+	      fi
+	      
+	      done 
+	    
+	    # test invalid signing key exponent
+	    EXPONENT=15
+	    echo "Creating a signing key using invalid exponent $EXPONENT."
+	    createkey $LOADKEY_VERSION -kt s \
+		-pwdp $SRK_PASSWORD \
+		-pwdk $STORAGEKEY_PASSWORD \
+		-pwdm $MIGRATION_PASSWORD \
+		-sz $KEYSIZE_ST \
+		-exp $EXPONENT \
+		-ok $STORAGEKEY_FILENAME \
+		-hp $SRK_HANDLE > run.out
+	    if [ $? -ne 0 ]; then
+		echo " INFO: Could not create signing key with public exponent $EXPONENT."
+	    else
+		echo " ERROR: Successfully created signing key with public exponent $EXPONENT."
+		dumpOutput
+	    fi
+	    
+	    # test valid but not default exponent
+	    EXPONENT=3
+	    for KEYTYPE in e m
+	      do 
+	      echo "Creating a key type $KEYTYPE that requires the default exponent."
+	      createkey $LOADKEY_VERSION -kt $KEYTYPE \
+		  -pwdp $SRK_PASSWORD \
+		  -pwdk $STORAGEKEY_PASSWORD \
+		  -pwdm $MIGRATION_PASSWORD \
+		  -sz $KEYSIZE_ST \
+		  -exp $EXPONENT \
+		  -ok $STORAGEKEY_FILENAME \
+		  -hp $SRK_HANDLE > run.out
+	      if [ $? -ne 0 ]; then
+		  echo " INFO: Could not create key type $KEYTYPE with public exponent $EXPONENT."
+	      else
+		  echo " ERROR: Successfully created key $KEYTYPE type with public exponent $EXPONENT."
+		  dumpOutput
+	      fi
+	    done
+	    
+	    # testing identity key
+	    echo "Creating an identity with non-default exponent."
+	    identity -pwdo $OWNER_PASSWORD \
+		-la $IDENTITY_LABEL \
+		-pwdk $IDENTITY_PASSWORD \
+		-pwds $SRK_PASSWORD \
+		-exp 3 > run.out
+	    
+	    if [ $? -ne 0 ]; then
+		echo " INFO: Could not create an identity with exponent 3."
+	    else
+		echo " ERROR: Successfully created an identity with exponent 3."
+		dumpOutput
+	    fi
+
+	    echo "Creating an identity with non-default size."
+	    identity -pwdo $OWNER_PASSWORD \
+		-la $IDENTITY_LABEL \
+		-pwdk $IDENTITY_PASSWORD \
+		-pwds $SRK_PASSWORD \
+		-sz 1024 > run.out
+	    
+	    if [ $? -ne 0 ]; then
+		echo " INFO: Could not create an identity with size 1024."
+	    else
+		echo " ERROR: Successfully created an identity with size 1024."
+		dumpOutput
+	    fi
+	fi
+	echo ""
+}

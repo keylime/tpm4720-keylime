@@ -1,0 +1,182 @@
+			Software TPM Porting
+		     Written by Ken Goldman
+		       IBM Thomas J. Watson Research Center
+
+		$Id: PORTING 4716 2013-12-24 20:47:44Z kgoldman $
+
+(c) Copyright IBM Corporation 2010:
+
+This documentation is provided with source code (Trusted Platform
+Module (TPM) subject to the following license:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the names of the IBM Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These notes should be used when porting the TPM to another platform.
+
+Current
+-------
+
+The TPM has been tested on the following platforms:
+
+Linux i86 - with sockets, single TPM and VTPM with threads
+Linux 64 bit - with sockets
+Windows using cygwin - with sockets, single TPM
+Windows native - with sockets, single TPM
+AIX
+PCIXCC - with CCA
+cell processor, single TPM
+Linux with the Xen hypervisor, single TPM and VTPM with threads
+
+Porting - Interface
+-------------------
+
+The first decision is the TPM-host interface.
+
+Sockets:
+
+tpm_io.c implements a platform dependent Posix or Windows TCP/IP
+socket interface or a Posix Unix domain socket interface.
+
+Other:
+
+The TPM can be called directly as an API function call.  In that case,
+tpm_server.c is not used.
+
+Call the initialization function as in tpm_server.c.  Then, assuming a
+serialized command packet is available, call TPM_Process() directly.
+
+Porting - Platform Dependent Code
+---------------------------------
+
+1 - Crypto
+
+tpm_crypto.c holds platform dependent crypto code.
+
+It currently supports the openSSL and PCIXCC API's.  If another
+crypto API is used, much of this file will change.
+
+The intent is that tpm_crypto.c holds library dependent code and
+tpm_cryptoh.c holds higher level functions that are platform
+independent.  Exceptions should be considered bugs, and the code
+should be refactored to meet the intent.
+
+The openssl function calls include these.  There is also a significant
+amount of RSA key structure manipulation to construct and extract
+public and private key parts.  AES keys are similarly manipulated.
+
+OpenSSL_add_all_algorithms();
+
+CRYPTO_num_locks();
+CRYPTO_set_locking_callback();
+CRYPTO_set_id_callback();
+
+RAND_bytes();
+RAND_add();
+
+MGF1();
+
+RSA_new();                        
+RSA_free();  
+RSA_size();
+RSA_generate_key();                
+RSA_padding_add_PKCS1_type_1();
+RSA_padding_add_PKCS1_OAEP();
+RSA_padding_add_PKCS1_type_2();
+RSA_padding_check_PKCS1_OAEP();
+RSA_padding_check_PKCS1_type_2();
+RSA_public_encrypt();
+RSA_private_decrypt();
+RSA_private_encrypt();
+RSA_sign();
+RSA_verify();
+
+BN_new();
+BN_CTX_start();      
+BN_CTX_new();
+BN_bn2bin()     
+BN_bin2bn();
+BN_num_bytes();
+BN_is_zero();
+BN_is_one();
+BN_add(); 
+BN_sub();    
+BN_mul();          
+BN_div();         
+BN_mask_bits();
+BN_rshift();
+BN_lshift();
+BN_mod();
+BN_mod_inverse();    
+BN_mod_add(); 
+BN_mod_mul();
+BN_mod_exp();
+
+SHA1_Init();
+SHA1_Update();
+SHA1_Final();
+
+AES_set_encrypt_key();
+AES_set_decrypt_key();
+AES_encrypt();
+AES_cbc_encrypt();
+AES_ofb128_encrypt();
+
+2 - Trace
+
+Trace currently uses printf.  If another output means is required, the
+macros in debug.h change.
+
+3 - NVRAM
+
+NVRAM is abstracted as one file holding non-volatile (permanent data
+and flags, NV defined space, owner evict keys) state and one file
+holding volatile (TPM_SaveState) state.
+
+See tpm_nvram_const.h, tpm_nvfile.c and tpm_nvfile.h.
+
+4 - Time
+
+Time is used for authentication dictionary attack mitigation and tick
+stamps.
+
+tpm_time.c and tpm_time.h hold this platform dependent code.  Posix
+and Windows are supported.
+
+The TPM requires 64 bit integers for some time structures.  Posix
+and Windows are supported.
+
+5 - Threads
+
+When running as a VTPM with multiple instances, the VTPM create a
+thread pool to handle requests to multiple TPM instances in parallel.
+
+The threading code is abstracted in tpm_thread.c.  Posix and Windows
+are supported.
+

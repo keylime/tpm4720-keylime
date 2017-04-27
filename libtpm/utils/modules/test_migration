@@ -1,0 +1,1207 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_migration 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Do migration tests involving only one TPM
+
+doMigrationTest1TPM ()
+{
+	echo ""
+	echo "Migrating the storage key key. Loading the migrated key back into the TPM."
+	echo "Parent key is SRK, migration key is storage key"
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -hm $STORAGEKEY_HANDLE -pwdk $STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully migrated key and loaded it back into the TPM."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Migrating the storage key using rewrap mode. Loading the migrated key back into the TPM."
+	echo "Parent key is SRK, migration key is 2nd storage key"
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -hm $SECOND_STORAGEKEY_HANDLE -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	          -rewrap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+	echo "Migrating the 2nd storage key. Loading the migrated key back into the TPM."
+	echo "Migration key is 2nd storage key, parent key is 1st storage key."
+	./migrate -hp $STORAGEKEY_HANDLE -pwdp $STORAGEKEY_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $SECOND_STORAGEKEY_FILENAME.key \
+	          -hm $SECOND_STORAGEKEY_HANDLE -pwdk $SECOND_STORAGEKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully migrated key and loaded it back into the TPM."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+	echo "Migrating a key using *rewrap* mode. Loading the migrated key back into the TPM."
+	echo "Migration key is 2nd storage key, parent key is 1st storage key."
+	./migrate -hp $STORAGEKEY_HANDLE -pwdp $STORAGEKEY_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $SECOND_STORAGEKEY_FILENAME.key \
+	          -hm $SECOND_STORAGEKEY_HANDLE -pwdk $SECOND_STORAGEKEY_PASSWORD \
+	          -rewrap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully migrated key and loaded it back into the TPM."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+	echo "Migrating the storage key. Loading the migrated key back into the TPM."
+	echo "Migration key is binding key, parent key is SRK."
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -hm $BINDINGKEY_HANDLE -pwdk $BINDINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: Could migrate key with binding key."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Migrating the storage key. Loading the migrated key back into the TPM."
+	echo "Migration key is signing key, parent key is SRK."
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -hm $SIGNINGKEY_HANDLE -pwdk $SIGNINGKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: Could migrate key with signing key."
+		dumpOutput
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Migrating the storage key. Loading the migrated key back into the TPM."
+	echo "Migration key is legacy key, parent key is SRK."
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -hm $LEGACYKEY_HANDLE -pwdk $LEGACYKEY_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_KEYUSAGE ]; then
+		echo " INFO: Successfully completed command."
+	else
+		echo " ERROR: Unexpected return code from command ($ERR)."
+		dumpOutput
+	fi
+
+
+	echo "Migrating the 2nd storage key. Loading the migrated key back into the TPM."
+	echo "Migration key is 2nd storage key w/o pwd, parent key is 1st storage key."
+	./migrate -hp $STORAGEKEY_HANDLE -pwdp $STORAGEKEY_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $SECOND_STORAGEKEY_FILENAME.key \
+	          -hm $SECOND_STORAGEKEY_NOPWD_HANDLE \
+	          > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully migrated key and loaded it back into the TPM."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+	echo "Migrating a key using *rewrap* mode. Loading the migrated key back into the TPM."
+	echo "Migration key is 2nd storage key w/o pwd, parent key is 1st storage key."
+	./migrate -hp $STORAGEKEY_HANDLE -pwdp $STORAGEKEY_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $SECOND_STORAGEKEY_FILENAME.key \
+	          -hm  $SECOND_STORAGEKEY_NOPWD_HANDLE \
+	          -rewrap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully migrated key and loaded it back into the TPM."
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+}
+
+
+doMigrationTest1TPM_2Steps ()
+{
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo ""
+		echo "Migrating storage key in 2 steps. Loading the migrated key back into the TPM."
+		echo "Parent key is SRK, migration key is storage key"
+		rm -rf migrationblob.bin > /dev/null
+		./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+		          -pwdo $OWNER_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -ik $STORAGEKEY_FILENAME.key \
+		          -hm $MIGRATIONKEY_HANDLE -pwdk $MIGRATIONKEY_PASSWORD \
+		          -ok migrationblob.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully migrated key and wrote blob to file."
+			echo "Re-encrypting key now using migrate key call."
+
+			./migratekey -hm $MIGRATIONKEY_HANDLE \
+			             -pwdm $MIGRATIONKEY_PASSWORD \
+			             -ik $STORAGEKEY_FILENAME.key \
+			             -if migrationblob.bin > run.out
+			ERR=$?
+			if [ $ERR -eq 0 ]; then
+				echo " INFO: Successfully wrote migrated blob to file."
+				echo "Loading migration blob into TPM."
+				./loadmigrationblob  -hp $STORAGEKEY_HANDLE \
+				                     -if migrationblob.bin \
+				                     -pwdp $STORAGEKEY_PASSWORD \
+				                     > run.out
+				ERR=$?
+				if [ $ERR -ne 0 ]; then
+					echo " ERROR: Could not load the migration blob into the TPM."
+					dumpOutput
+				elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+					echo " WARN: Could not migrate due to incompatible key sizes."
+				else
+					echo " INFO: Successfully loaded migration blob into the TPM."
+				fi
+			else
+				echo " ERROR: migratekey returned error ($?)."
+				dumpOutput
+			fi
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not migrate key."
+			dumpOutput
+		fi
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Migrating the 2nd storage key in 2 steps. Loading the migrated key back into the TPM."
+		echo "Parent key is 1st storage key w/o pwd, migration key is 'migration key'"
+		rm -rf migrationblob.bin > /dev/null
+		./migrate -hp $STORAGEKEY_HANDLE -pwdp $STORAGEKEY_PASSWORD \
+		          -pwdo $OWNER_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -ik $SECOND_STORAGEKEY_FILENAME.key \
+		          -hm $MIGRATIONKEY_HANDLE -pwdk $MIGRATIONKEY_PASSWORD \
+		          -ok migrationblob.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully migrated key and wrote blob to file."
+			echo "Re-encrypting key now using migratekey call."
+	
+			./migratekey -hm $MIGRATIONKEY_HANDLE \
+			             -pwdm $MIGRATIONKEY_PASSWORD \
+			             -ik $STORAGEKEY_NOPWD_FILENAME.key \
+			             -if migrationblob.bin > run.out
+			ERR=$?
+			if [ $ERR -eq 0 ]; then
+				echo " INFO: Successfully wrote migrated blob to file."
+				echo "Loading migration blob into TPM."
+				./loadmigrationblob  -hp $STORAGEKEY_NOPWD_HANDLE \
+				                     -if migrationblob.bin \
+				                     > run.out
+				ERR=$?
+				if [ $ERR -ne 0 ]; then
+					echo " ERROR: Could not load the migration blob into the TPM."
+					dumpOutput
+				elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+					echo " WARN: Could not migrate due to incompatible key sizes."
+				else
+					echo " INFO: Successfully loaded migration blob into the TPM."
+				fi
+			else
+				echo " ERROR: migratekey returned error ($?)."
+				dumpOutput
+			fi
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not migrate key."
+			dumpOutput
+		fi
+	fi
+}
+
+### Perform migration of a key from TPM 1 to TPM 2
+doMigrationTest2TPMs ()
+{
+	echo ""
+	echo "Migrating the storage key from TPM 1 to TPM 2."
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+	rm -rf migrationblob.bin > /dev/null
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -im $TPM2_STORAGEKEY_FILENAME.key -pwdk $TPM2_STORAGEKEY_PASSWORD \
+	          -ok migrationblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 2nd TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		echo "Loading migration blob into 2nd TPM"
+		./loadmigrationblob -hp $TPM2_STORAGEKEY_HANDLE \
+		                    -if migrationblob.bin \
+		                    -pwdp $TPM2_STORAGEKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Migrated the key into the 2nd TPM."
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not load the key into the 2nd TPM."
+			dumpOutput
+		fi
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		echo "------------------"
+		cat run.out
+		echo "------------------"
+	fi
+
+
+	echo "Migrating the storage key from TPM 1 to TPM 2 using rewrap mode."
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+	./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $STORAGEKEY_FILENAME.key \
+	          -im $TPM2_STORAGEKEY_FILENAME.key -pwdk $TPM2_STORAGEKEY_PASSWORD \
+	          -ok migrationblob.bin -rewrap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 2nd TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		echo "Loading migration blob into 2nd TPM"
+		./loadmigrationblob -hp $TPM2_STORAGEKEY_HANDLE \
+		                    -if migrationblob.bin \
+		                    -pwdp $TPM2_STORAGEKEY_PASSWORD \
+		                    -rewrap > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Migrated the key into the 2nd TPM."
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not load the key into the 2nd TPM."
+			dumpOutput
+		fi
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Migrating the storage key from TPM 1 to TPM 2 using 2 steps"
+
+		TPM_SERVER_NAME=$MASTER_TPM_SERVER
+		TPM_SERVER_PORT=$MASTER_TPM_PORT
+		rm -rf migrationblob.bin > /dev/null
+		./migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+		          -pwdo $OWNER_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -ik $STORAGEKEY_FILENAME.key \
+		          -hm $MIGRATIONKEY_HANDLE -pwdk $MIGRATIONKEY_PASSWORD \
+		          -ok migrationblob.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote migration blob to file"
+
+			echo "Reencrypting file with storage key of destination TPM"
+			./migratekey -hm $MIGRATIONKEY_HANDLE \
+			             -pwdm $MIGRATIONKEY_PASSWORD \
+			             -ik $TPM2_STORAGEKEY_FILENAME.key \
+			             -if migrationblob.bin > run.out
+			ERR=$?
+			if [ $ERR -eq 0 ]; then
+				echo " INFO: Reencrypted private key part."
+				# Switch to 2nd TPM and load the migration blob into that TPM.
+				TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+				TPM_SERVER_PORT=$SLAVE_TPM_PORT
+				echo "Loading migration blob into 2nd TPM"
+				./loadmigrationblob -hp $TPM2_STORAGEKEY_HANDLE \
+				                    -if migrationblob.bin \
+				                    -pwdp $TPM2_STORAGEKEY_PASSWORD > run.out
+				ERR=$?
+				if [ $ERR -eq 0 ]; then
+					echo " INFO: Migrated the key into the 2nd TPM."
+				elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+					echo " WARN: Could not migrate due to incompatible key sizes."
+				else
+					echo " ERROR: Could not load the key into the 2nd TPM."
+					dumpOutput
+				fi
+			elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+				echo " WARN: Could not migrate due to incompatible key sizes."
+			else
+				echo " ERROR: Could not re-encrypt private key part."
+				dumpOutput
+			fi
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not migrate key."
+			echo "------------------"
+			cat run.out
+			echo "------------------"
+		fi
+	fi
+
+
+	echo "Migrating TPM 2 storage key from TPM 2 to TPM 1."
+
+	TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+	TPM_SERVER_PORT=$SLAVE_TPM_PORT
+	rm -rf migrationblob.bin > /dev/null
+	./migrate -hp $SRK_HANDLE -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdo $TPM2_OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $TPM2_STORAGEKEY_FILENAME.key \
+	          -im $STORAGEKEY_FILENAME.key -pwdk $STORAGEKEY_PASSWORD \
+	          -ok migrationblob.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 1st TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$MASTER_TPM_SERVER
+		TPM_SERVER_PORT=$MASTER_TPM_PORT
+		echo "Loading migration blob into 1st TPM"
+		./loadmigrationblob -hp $STORAGEKEY_HANDLE \
+		                    -if migrationblob.bin \
+		                    -pwdp $STORAGEKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Migrated the key into the 1st TPM."
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not load the key into the 1st TPM."
+			dumpOutput
+			return 1
+		fi
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		echo "------------------"
+		cat run.out
+		echo "------------------"
+	fi
+
+
+	echo "Migrating TPM 2 storage key from TPM 2 to TPM 1 using rewrap mode."
+
+	TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+	TPM_SERVER_PORT=$SLAVE_TPM_PORT
+	./migrate -hp $SRK_HANDLE -pwdp $TPM2_SRK_PASSWORD \
+	          -pwdo $TPM2_OWNER_PASSWORD \
+	          -pwdm $MIGRATION_PASSWORD \
+	          -ik $TPM2_STORAGEKEY_FILENAME.key \
+	          -im $STORAGEKEY_FILENAME.key -pwdk $STORAGEKEY_PASSWORD \
+	          -ok migrationblob.bin -rewrap > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 1st TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$MASTER_TPM_SERVER
+		TPM_SERVER_PORT=$MASTER_TPM_PORT
+		echo "Loading migration blob into 1st TPM"
+		./loadmigrationblob -hp $STORAGEKEY_HANDLE \
+		                    -if migrationblob.bin \
+		                    -pwdp $STORAGEKEY_PASSWORD \
+		                    -rewrap > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Migrated the key into the 1st TPM."
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not load the key into the 1st TPM."
+			dumpOutput
+		fi
+	elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+		echo " WARN: Could not migrate due to incompatible key sizes."
+	else
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	fi
+
+
+	if [ "$TPM_VERSION" != "11" ]; then
+		echo "Migrating TPM 2 storage key from TPM 2 to TPM 1 using 2 steps"
+
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		rm -rf migrationblob.bin > /dev/null
+		./migrate -hp $SRK_HANDLE -pwdp $TPM2_SRK_PASSWORD \
+		          -pwdo $TPM2_OWNER_PASSWORD \
+		          -pwdm $MIGRATION_PASSWORD \
+		          -ik $TPM2_STORAGEKEY_FILENAME.key \
+		          -hm $TPM2_MIGRATIONKEY_HANDLE -pwdk $TPM2_MIGRATIONKEY_PASSWORD \
+		          -ok migrationblob.bin > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote migration blob to file"
+
+			echo "Reencrypting file with storage key of destination TPM"
+			./migratekey -hm $TPM2_MIGRATIONKEY_HANDLE \
+			             -pwdm $TPM2_MIGRATIONKEY_PASSWORD \
+			             -ik $STORAGEKEY_FILENAME.key \
+			             -if migrationblob.bin > run.out
+			ERR=$?
+			if [ $ERR -eq 0 ]; then
+				echo " INFO: Reencrypted private key part."
+				# Switch to 1st TPM and load the migration blob into that TPM.
+				TPM_SERVER_NAME=$MASTER_TPM_SERVER
+				TPM_SERVER_PORT=$MASTER_TPM_PORT
+				echo "Loading migration blob into 1st TPM"
+				./loadmigrationblob -hp $STORAGEKEY_HANDLE \
+				                    -if migrationblob.bin \
+				                    -pwdp $STORAGEKEY_PASSWORD > run.out
+				ERR=$?
+				if [ $ERR -eq 0 ]; then
+					echo " INFO: Migrated the key into the 1st TPM."
+				elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+					echo " WARN: Could not migrate due to incompatible key sizes."
+				else
+					echo " ERROR: Could not load the key into the 1st TPM."
+					dumpOutput
+				fi
+			elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+				echo " WARN: Could not migrate due to incompatible key sizes."
+			else
+				echo " ERROR: Could not re-encrypt private key part."
+				dumpOutput
+			fi
+		elif [ $ERR -eq $TPM_BAD_DATASIZE ]; then
+			echo " WARN: Could not migrate due to incompatible key sizes."
+		else
+			echo " ERROR: Could not migrate key."
+			echo "------------------"
+			cat run.out
+			echo "------------------"
+		fi
+		TPM_SERVER_NAME=$MASTER_TPM_SERVER
+		TPM_SERVER_PORT=$MASTER_TPM_PORT
+	fi
+}
+
+
+doMigrationTest1TPM_CMK ()
+{
+	TESTMESSAGE=testmessage
+	rm -rf migrationblob.bin > /dev/null
+	echo ""
+
+#
+# Before CMK keys are generated, the migration keys must exist and 
+# cmk_approvema be used to build an msa list
+# I need that particular msa list here!!!
+#
+
+	echo "Migrating CMK storage key. Loading the migrated key back into the TPM."
+	echo "Parent key is SRK, Migration key is 1st CMK storage key"
+	cmk_migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -msa msalist.bin \
+	          -ok migrationblob.bin \
+	          -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	          -ik $CMK_STORAGEKEY_SRK_FILENAME.key \
+	          > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+	echo ""
+	echo ""
+	echo "Migrating CMK storage key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key"
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -msa msalist.bin \
+	          -ok migrationblob.bin \
+	          -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	          -ik $CMK_STORAGEKEY_FILENAME.key \
+	          > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+
+	fi
+
+	echo "Migrating CMK migration key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key"
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_MIGRATIONKEY_FILENAME.key \
+	            > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+
+	fi
+
+
+
+	echo "Migrating CMK signing key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key"
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_SIGNINGKEY_FILENAME.key \
+	            > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+	echo "Migrating CMK legacy key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key"
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_LEGACYKEY_FILENAME.key \
+	            > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+
+	fi
+
+
+
+	echo "Migrating CMK binding key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key"
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_BINDINGKEY_FILENAME.key \
+	            > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+
+	fi
+
+
+	echo ""
+	echo "Migrating CMK storage key. Loading the migrated key back into the TPM."
+	echo "Parent key is SRK, Migration key is 1st CMK storage key"
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $SRK_HANDLE -pwdp $SRK_PASSWORD \
+	          -pwdo $OWNER_PASSWORD \
+	          -msa msalist.bin \
+	          -ok migrationblob.bin \
+	          -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	          -ik $CMK_STORAGEKEY_SRK_FILENAME.key \
+	          -double \
+	          -hs $SIGNINGKEY_HANDLE \
+	          -pwds $SIGNINGKEY_PASSWORD \
+	          > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+	echo ""
+	echo "Migrating CMK storage key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_STORAGEKEY_FILENAME.key \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+
+	echo ""
+	echo "Migrating CMK legacy key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_LEGACYKEY_FILENAME.key \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+	echo ""
+	echo "Migrating CMK signing key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_SIGNINGKEY_FILENAME.key \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+	echo ""
+	echo "Migrating CMK binding key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_BINDINGKEY_FILENAME.key \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+	echo ""
+	echo "Migrating CMK migration key. Loading the migrated key back into the TPM."
+	echo "Parent key is non-migrateable storage key, "
+	echo "migration key is 1st CMK storage key. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -msa msalist.bin \
+	            -ok migrationblob.bin \
+	            -im $STORAGEKEY_NM_FILENAME.key -pwdk $STORAGEKEY_NM_PASSWORD \
+	            -ik $CMK_MIGRATIONKEY_FILENAME.key \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate CMK key."
+		dumpOutput
+		return 1
+	else
+		echo " INFO: Successfully migrated key."
+
+		echo "Loading the migration blob into the TPM."
+		cmk_loadmigrationblob -hp $STORAGEKEY_NM_HANDLE -im $STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $STORAGEKEY_NM_PASSWORD \
+		                      -msa msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $OWNER_PASSWORD \
+		                      -hs $SIGNINGKEY_HANDLE \
+		                      -pwds $SIGNINGKEY_PASSWORD > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the migration blob."
+			dumpOutput
+		else
+			echo " INFO: Successfully loaded the migration blob."
+		fi
+	fi
+
+
+}
+
+
+### Perform migration of a key from TPM 1 to TPM 2
+doMigrationTest2TPMs_CMK ()
+{
+	echo ""
+	echo "Migrating a test key from TPM 1 to TPM 2."
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+	rm -rf migrationblob.bin > /dev/null
+
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -im $TPM2_STORAGEKEY_NM_FILENAME.key -pwdk $TPM2_STORAGEKEY_NM_PASSWORD \
+	            -ik $MIGRATIONTEST_CMK_STORAGEKEY_FILENAME.key \
+	            -msa tpm1_msalist.bin \
+	            -ok migrationblob.bin \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 2nd TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		echo "Loading migration blob into 2nd TPM"
+
+		### Have to use tpm1_msalist.bin here!!!
+
+		cmk_loadmigrationblob -hp $TPM2_STORAGEKEY_NM_HANDLE -im $TPM2_STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $TPM2_STORAGEKEY_NM_PASSWORD \
+		                      -msa tpm1_msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $TPM2_OWNER_PASSWORD \
+		                      -hs $TPM2_SIGNINGKEY_HANDLE \
+		                      -pwds $TPM2_SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the key into the 2nd TPM."
+			dumpOutput
+		else
+			echo " INFO: Migrated the key into the 2nd TPM."
+		fi
+	fi
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+
+	echo ""
+	echo "Migrating a test key from TPM 1 to TPM 2. Using DOUBLE-APPROVE migration"
+	echo "scheme."
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+	rm -rf migrationblob.bin > /dev/null
+
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -im $TPM2_STORAGEKEY_NM_FILENAME.key -pwdk $TPM2_STORAGEKEY_NM_PASSWORD \
+	            -ik $MIGRATIONTEST_CMK_STORAGEKEY_FILENAME.key \
+	            -msa tpm1_msalist.bin \
+	            -ok migrationblob.bin \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 2nd TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		echo "Loading migration blob into 2nd TPM"
+
+		### Have to use tpm1_msalist.bin here!!!
+
+		cmk_loadmigrationblob -hp $TPM2_STORAGEKEY_NM_HANDLE -im $TPM2_STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $TPM2_STORAGEKEY_NM_PASSWORD \
+		                      -msa tpm1_msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $TPM2_OWNER_PASSWORD \
+		                      -hs $TPM2_SIGNINGKEY_HANDLE \
+		                      -pwds $TPM2_SIGNINGKEY_PASSWORD \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the key into the 2nd TPM."
+			dumpOutput
+		else
+			echo " INFO: Migrated the key into the 2nd TPM."
+		fi
+	fi
+
+	echo ""
+	echo "Migrating a test key from TPM 1 to TPM 2. Using DOUBLE-APPROVE migration"
+	echo "scheme. Using signing key without password."
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+	rm -rf migrationblob.bin > /dev/null
+
+	cmk_migrate -hp $STORAGEKEY_NM_HANDLE -pwdp $STORAGEKEY_NM_PASSWORD \
+	            -pwdo $OWNER_PASSWORD \
+	            -im $TPM2_STORAGEKEY_NM_FILENAME.key -pwdk $TPM2_STORAGEKEY_NM_PASSWORD \
+	            -ik $MIGRATIONTEST_CMK_STORAGEKEY_FILENAME.key \
+	            -msa tpm1_msalist.bin \
+	            -ok migrationblob.bin \
+	            -double \
+	            -hs $SIGNINGKEY_HANDLE \
+	            -pwds $SIGNINGKEY_PASSWORD \
+	            > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " ERROR: Could not migrate key."
+		dumpOutput
+	else
+		echo " INFO: Successfully wrote migration blob to file"
+		# Switch to 2nd TPM and load the migration blob into that TPM.
+		TPM_SERVER_NAME=$SLAVE_TPM_SERVER
+		TPM_SERVER_PORT=$SLAVE_TPM_PORT
+		echo "Loading migration blob into 2nd TPM"
+
+		### Have to use tpm1_msalist.bin here!!!
+
+		cmk_loadmigrationblob -hp $TPM2_STORAGEKEY_NM_HANDLE -im $TPM2_STORAGEKEY_NM_FILENAME.key \
+		                      -pwdp $TPM2_STORAGEKEY_NM_PASSWORD \
+		                      -msa tpm1_msalist.bin \
+		                      -if migrationblob.bin \
+		                      -pwdo $TPM2_OWNER_PASSWORD \
+		                      -hs $TPM2_SIGNINGKEY_NOPWD_HANDLE \
+		                      > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not load the key into the 2nd TPM."
+			dumpOutput
+		else
+			echo " INFO: Migrated the key into the 2nd TPM."
+		fi
+	fi
+
+	TPM_SERVER_NAME=$MASTER_TPM_SERVER
+	TPM_SERVER_PORT=$MASTER_TPM_PORT
+
+}

@@ -1,0 +1,321 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_binding 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Test binding of content of a file.
+doBindingFileTest ()
+{
+	echo ""
+
+	echo "Binding contents of a file. Using binding key."
+	./bindfile -ik $BINDINGKEY_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file with key $BINDINGKEY_HANDLE."
+		./unbindfile -pwdk $BINDINGKEY_PASSWORD \
+		             -hk $BINDINGKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+
+	echo "Binding contents of a file. Using binding key without password."
+	./bindfile -ik $BINDINGKEY_NOPWD_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file with binding key without password $BINDINGKEY_NOPWD_HANDLE."
+		./unbindfile \
+		             -hk $BINDINGKEY_NOPWD_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+
+	echo "Binding contents of a file. Using signing key."
+	./bindfile -ik $SIGNINGKEY_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $SIGNINGKEY_HANDLE."
+		./unbindfile -pwdk $SIGNINGKEY_PASSWORD \
+		             -hk $SIGNINGKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -eq $TPM_INVALID_KEYUSAGE ]; then
+			echo " INFO: Successfully completed command."
+		else
+			echo " ERROR: Unexpected error from unbind ($?)."
+			echo " INFO: Difference of files:"
+			diff input output
+			dumpOutput
+		fi
+	fi
+
+
+	echo "Binding contents of a file. Using 1st storage key."
+	./bindfile -ik $STORAGEKEY_FILENAME.pem -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file."
+		./unbindfile -pwdk $STORAGEKEY_PASSWORD \
+		             -hk $STORAGEKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -eq $TPM_INVALID_KEYUSAGE ]; then
+			echo " INFO: Successfully completed command"
+		else
+			echo " ERROR: Unexpected error from unbind ($?)."
+			echo " INFO: Difference of files:"
+			diff input output
+			dumpOutput
+		fi
+	fi
+
+
+
+	echo "Binding contents of a file. Using 2nd storage key."
+	./bindfile -ik $SECOND_STORAGEKEY_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $SECOND_STORAGEKEY_HANDLE."
+		./unbindfile -pwdk $SECOND_STORAGEKEY_PASSWORD \
+		             -hk $SECOND_STORAGEKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -eq $TPM_INVALID_KEYUSAGE ]; then
+			echo " INFO: Successfully completed command ($?)."
+		else
+			echo " ERROR: Unexpected error from unbind ($?)."
+			echo " INFO: Difference of files:"
+			diff input output
+			dumpOutput
+		fi
+	fi
+
+	echo "Binding contents of a file. Using migration key."
+	./bindfile -ik $MIGRATIONKEY_FILENAME.pem -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $MIGRATIONKEY_HANDLE"
+		./unbindfile -pwdk $MIGRATIONKEY_PASSWORD \
+		             -hk $MIGRATIONKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -eq $TPM_INVALID_KEYUSAGE ]; then
+			echo " INFO: Successfully completed command"
+		else
+			echo " ERROR: Unexpected error from unbind ($?)."
+			echo " INFO: Difference of files:"
+			diff input output
+			dumpOutput
+		fi
+	fi
+
+
+
+	echo "Binding contents of a file. Using legacy key."
+	./bindfile -ik $LEGACYKEY_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $LEGACYKEY_HANDLE."
+		./unbindfile -pwdk $LEGACYKEY_PASSWORD \
+		             -hk $LEGACYKEY_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+
+	echo "Binding contents of a file. Using legacy key w/o password."
+	./bindfile -ik $LEGACYKEY_NOPWD_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $LEGACYKEY_NOPWD_HANDLE."
+		./unbindfile \
+		             -hk $LEGACYKEY_NOPWD_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+			dumpOutput
+		fi
+	fi
+
+	echo "Binding contents of a file. Using non-mig. legacy key."
+	./bindfile -ik $LEGACYKEY_NM_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $LEGACYKEY_NM_HANDLE."
+		./unbindfile -pwdk $LEGACYKEY_NM_PASSWORD \
+		             -hk $LEGACYKEY_NM_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+
+}
+
+doBindingFileTestPKCSV15 ()
+{
+	echo ""
+
+	echo "Binding contents of a file. Using (pkcsv15) binding key."
+	./bindfile -pkcsv15 -ik $BINDINGKEY_PKCSV15_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file using key $BINDINGKEY_PKCSV15_HANDLE."
+		./unbindfile -pwdk $BINDINGKEY_PKCSV15_PASSWORD \
+		             -hk $BINDINGKEY_PKCSV15_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+
+	echo "Binding contents of a file. Using (pkcsv15) binding key without password."
+	./bindfile -pkcsv15 -ik $BINDINGKEY_PKCSV15_NOPWD_FILENAME.pem -if input -of outputa > run.out
+
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error while binding contents of file."
+		dumpOutput
+	else
+		echo " INFO: Success binding contents of file."
+		echo "Unbinding contents of file with binding key without password $BINDINGKEY_PKCSV15_NOPWD_HANDLE."
+		./unbindfile \
+		             -hk $BINDINGKEY_PKCSV15_NOPWD_HANDLE \
+		             -if outputa \
+		             -of output > run.out
+
+		if [ $? -ne 0 ]; then
+			echo " ERROR: Could not unbind contents of file."
+			dumpOutput
+			listkeys
+		else
+			echo " INFO: Success unbinding contents of file."
+			echo " INFO: Difference of files:"
+			diff input output
+		fi
+	fi
+}

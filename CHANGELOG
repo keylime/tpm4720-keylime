@@ -1,0 +1,152 @@
+			TPM Change Log
+		     Written by Ken Goldman
+		       IBM Thomas J. Watson Research Center
+	      $Id: CHANGELOG 4717 2013-12-26 14:51:00Z kgoldman $
+
+(c) Copyright IBM Corporation 2010:
+
+This documentation is provided with source code (Trusted Platform
+Module (TPM) subject to the following license:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the names of the IBM Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Changes from 4665 to current
+
+Major
+____
+
+TPM
+- - -
+
+Don't use physical presence flag if CMD enable is false
+
+Utilities:
+- - - - -
+
+mv_writevalue
+	added write from file
+	added write with certificate prefix
+nv_readvalue
+	added read to file
+	added read to strip certificate prefix
+separated activateidentity and makeidentity
+added option to activateidentity to read and decrypt AIK certificate with symmetric key
+added quote option to validate against certificate
+create revokable EK used wrong encryption algorithm
+takeown, counter, delegation, migration accept ownerAuth from file
+added tpm_proxy for Windows 7
+
+Minor
+-----
+
+TPM:
+- - -
+
+Fixed debug print plus some style errors reported by Coverity
+
+Utilities:
+- - - - -
+
+Skip exponent tests for HW TPM
+When setting CMD physical presence, permit error setting CMD enable because 
+	lifetime lock may be set
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Changes from 4078 to 4665
+
+Major
+____
+
+TPM
+- - -
+
+Added support for NSS/FreeBL and gnump crypto libraries to support use
+case where the OpenSSL licence is an issue.
+	Refactored crypto code, hoisted common functions.
+	Abstracted BIGNUM library and objects.
+	Added second low level crypto source to call NSS and gnump.
+	Added several makefile examples.
+
+Added volatile state serialization functions to support VTPM migration
+      Added SHA-1 context load and store.
+      Added test option with store and reload after each command.
+
+Utilities:
+- - - - -
+
+NV define space and take ownership utilities now support PCR
+specification.
+
+Can create keys with non-default size and exponent
+
+
+Minor
+-----
+
+TPM:
+- - -
+
+Fixed several cases where AUTHFAIL and AUTH2FAIL were reversed.
+
+Added checks for valid key size, legal public exponent, EK type
+
+Added TPM_ProcessA(), easier to call directly than TPM_Process()
+
+Constants have #ifndef so they can be specified in the makefile
+
+Fixed TPM_DSAP error where session may remain after an error.
+
+Separated TPM_ALLOC_MAX from TPM_BUFFER_MAX.
+
+Optimized NV storage when no PCRs are selected.
+
+Fixed some and added many trace statements
+
+Updated getcapability property to specification 116
+
+Fixed compiler error and removed errant tracing when TPM_DEBUG is not
+defined.
+
+Utilities:
+- - - - -
+
+More command line utilities have consistent arguments.  Fixed
+some usage print errors.
+
+Fixed bug in utilities MGF1 for 64-bit platform
+
+Create EK sets the (optional) EK type to support HW TPMs that do not
+ignore it.
+
+Added TPM proxy error checking and reporting
+
+Recoded to remove gcc type punning and uninitialized variable false
+warnings.

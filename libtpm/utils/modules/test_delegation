@@ -1,0 +1,993 @@
+#################################################################################
+#										#
+# Author: Stefan Berger, stefanb@us.ibm.com					#
+# $Id: test_delegation 4702 2013-01-03 21:26:29Z kgoldman $			#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+### Perform some test with delegation
+doDelegationTest ()
+{
+	echo ""
+
+	LABEL=1
+	KEYDELFILE=keydel.bin
+	KEYDELFILE_NEW=keydel_new.bin
+	OWNERDELFILE=ownerdel.bin
+	OWNERDELFILE_NEW=ownerdel_new.bin
+	STORAGEKEY_NM_PASSWORD_DELG=storagekeynm_delg
+	SRK_PASSWORD_DELG=srk_delg
+	OWNER_DELEGATION_PASSWORD=ownerdelgpassword
+
+	TPM_SESSION_REMEMBER=$TPM_SESSION
+
+	echo "Creating a family ID (A)"
+	delegatemanage \
+		-create $LABEL \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		FAMILYID=`cat run.out | grep "Family ID" | gawk '{ print $6 } '`
+		echo " INFO: Successfully created family ID $FAMILYID"
+	else
+		echo " ERROR: Could not create the family. Aborting this test"
+		dumpOutput
+		return 1
+	fi
+
+	echo "Activating family with ID $FAMILYID."
+	delegatemanage \
+		-enable 1 \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully enabled family with ID $FAMILYID"
+	else
+		echo " ERROR: Could not activate family with ID $FAMILYID. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Creating key delegation for the non-migrateable storage key to allow sealing."
+	createkeydelegation \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x6 \
+		-pwdk $STORAGEKEY_NM_PASSWORD \
+		-hk $STORAGEKEY_NM_HANDLE \
+		-pwdd $STORAGEKEY_NM_PASSWORD_DELG \
+		-of $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully delegated the storage key."
+	else
+		echo " ERROR: Could not delegate the storage key. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Verifying whether the key delegation blob is current."
+	verifydelegation -if $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Delegation blob is current."
+	else
+		echo " ERROR: Delegation blob is not current."
+	fi
+
+
+	TPM_SESSION=dsap
+
+	echo "Sealing contents of file 'input'. Using the delegated storage key."
+	sealfile -pwdk $STORAGEKEY_NM_PASSWORD_DELG \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file."
+		rm -rf output
+		unsealfile -pwdk $STORAGEKEY_NM_PASSWORD_DELG \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $STORAGEKEY_NM_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+		else
+			echo " INFO: Success unsealing contents of file."
+			echo " INFO: Difference in files:"
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+
+	echo "Creating key delegation for the SRK to allow sealing."
+	createkeydelegation \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x6 \
+		-pwdk $SRK_PASSWORD \
+		-hk $SRK_HANDLE \
+		-pwdd $SRK_PASSWORD_DELG \
+		-of $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully delegated the storage key."
+	else
+		echo " ERROR: Could not delegate the storage key. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Verifying whether the key delegation blob is current."
+	verifydelegation -if $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Delegation blob is current."
+	else
+		echo " ERROR: Delegation blob is not current."
+	fi
+
+
+	TPM_SESSION=dsap
+
+	echo "Sealing contents of file 'input'. Using the delegated SRK."
+	sealfile -pwdk $SRK_PASSWORD_DELG \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $SRK_HANDLE \
+	           -if input -of outputa > run.out
+	if [ $? -ne 0 ]; then
+		echo " ERROR: Error sealing contents of file 'input'."
+		dumpOutput
+	else
+		echo " INFO: Successfully sealed contents of file."
+		echo "Trying to unseal contents of file."
+		rm -rf output
+		unsealfile -pwdk $SRK_PASSWORD_DELG \
+		             -pwdd $DATAUSE_PASSWORD \
+		             -hk $SRK_HANDLE \
+		             -if outputa -of output > run.out
+		ERR=$?
+		if [ $ERR -ne 0 ]; then
+			echo " ERROR: Could not unseal contents of file ($ERR)."
+			dumpOutput
+		else
+			echo " INFO: Success unsealing contents of file."
+			echo " INFO: Difference in files:"
+			diff input output > /dev/null
+			RES=$?
+			if [ "$RES" != "0" ]; then
+				echo " ERROR: Files MUST be equal!"
+			fi
+		fi
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+	
+	echo "Doing owner delegation with increment of verification count"
+	createownerdelegation \
+		-inc \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x20000000 \
+		-pwdo $OWNER_PASSWORD \
+		-pwdd $OWNER_DELEGATION_PASSWORD \
+		-of $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully performed owner delegation."
+	else
+		echo " ERROR: Could not perform owner delegation. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+	TPM_SESSION=dsap
+
+	echo "Trying to seal the contents of file 'input' now."
+	sealfile -pwdk $STORAGEKEY_NM_PASSWORD_DELG \
+	           -pwdd $DATAUSE_PASSWORD \
+	           -hk $STORAGEKEY_NM_HANDLE \
+	           -if input -of outputa > run.out
+	ERR=$?
+	if [ $ERR -ne 0 ]; then
+		echo " INFO: Successfully completed the command ($ERR)."
+	else
+		echo " ERROR: Could unexpectedly seal the contents of the file."
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+
+	echo "Loading the owner delegation."
+	loadownerdelegation -pwdo $OWNER_PASSWORD \
+		-row 1 -if $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded owner delegation blob."
+	else
+		echo " ERROR: Could not load owner delegation blob."
+	fi
+
+	echo "Reading the delegation table."
+	delegatereadtable > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully read the delegation table."
+		dumpOutput
+	else
+		echo " ERROR: Could not read the delegation table."
+		dumpOutput
+	fi
+
+	echo "Verifying whether the key delegation blob is current."
+	verifydelegation -if $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: Delegation blob should not be current ($ERR)."
+	else
+		echo " INFO: Delegation blob is not current."
+	fi
+
+	rm -rf $KEYDELFILE_NEW
+
+	echo "Updating the verification count on the key blob."
+	updateverification \
+		-pwdo $OWNER_PASSWORD \
+		-if $KEYDELFILE -of $KEYDELFILE_NEW > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully updated key blob."
+	else
+		echo " ERROR: Could not update the key blob."
+	fi
+
+	echo "Verifying whether the key delegation blob is current."
+	verifydelegation -if $KEYDELFILE_NEW > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: The key delegation blob is current now."
+	else
+		echo " ERROR: The key delegation blob is still not current."
+		ls -l $KEYDELFILE_NEW
+		dumpOutput
+	fi
+
+	TPM_SESSION=dsap
+
+	#DirWriteAuth implemented
+	checkOrdImplemented 0x19
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo "  Skipping DIR-related test since not implemented in TPM"
+	else
+		INDEX=0x0
+		TEXT=test
+		echo "Writing text into DIR using owner delegation."
+		dirwrite -pwdo $OWNER_DELEGATION_PASSWORD \
+			-in $INDEX -ic $TEXT > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote into DIR."
+		else
+			echo " ERROR: Could not write into DIR."
+			dumpOutput
+		fi
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+	echo "Invalidating family with ID $FAMILYID."
+	delegatemanage \
+		-invalidate \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully invalidate familyID $FAMILYID."
+	else
+		echo " ERROR: Could not invalidate familyID $FAMILYID."
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+}
+
+#Do the delegation test using the SetOwnerPointer function
+doDelegationTest_OwnerPointer ()
+{
+	TPM_SESSION_REMEMBER=$TPM_SESSION
+	TPM_SESSION=osap
+	echo ""
+	echo ""
+
+	echo "Creating a family ID (B)"
+	delegatemanage \
+		-create $LABEL \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		FAMILYID=`cat run.out | grep "Family ID" | gawk '{ print $6 } '`
+		echo " INFO: Successfully created family ID $FAMILYID"
+	else
+		echo " ERROR: Could not create the family. Aborting this test"
+		dumpOutput
+		return 1
+	fi
+
+	echo "Activating family with ID $FAMILYID."
+	delegatemanage \
+		-enable 1 \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully enabled family with ID $FAMILYID"
+	else
+		echo " ERROR: Could not activate family with ID $FAMILYID. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Doing owner delegation with increment of verification count"
+	createownerdelegation \
+		-inc \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x20000000 \
+		-pwdo $OWNER_PASSWORD \
+		-pwdd $OWNER_DELEGATION_PASSWORD \
+		-of $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully performed owner delegation."
+	else
+		echo " ERROR: Could not perform owner delegation. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+	ROW=1
+
+	echo "Loading the owner delegation."
+	loadownerdelegation -pwdo $OWNER_PASSWORD \
+		-row $ROW -if $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded owner delegation blob."
+	else
+		echo " ERROR: Could not load owner delegation blob."
+		dumpOutput
+	fi
+
+	#DirWriteAuth implemented
+	checkOrdImplemented 0x19
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo "  Skipping DIR-related test since not implemented in TPM"
+	else
+		INDEX=0x0
+		TEXT=test
+		echo "Writing text into DIR using owner delegation. Using owner password"
+		dirwrite -pwdo $OWNER_PASSWORD \
+			-in $INDEX -ic $TEXT > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote into DIR."
+		else
+			echo " ERROR: Could not write into DIR."
+			dumpOutput
+		fi
+	fi
+
+	echo "Setting Owner Pointer to row $ROW"
+	setownerpointer -row $ROW > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully set owner pointer."
+	else
+		echo " ERROR: Could not set owner pointer."
+		dumpOutput
+	fi
+
+	TPM_SESSION=oiap
+
+	#DirWriteAuth implemented?
+	checkOrdImplemented 0x19
+	rc=$?
+	if [ $rc -eq 0 ]; then
+		echo "  Skipping DIR-related test since not implemented in TPM"
+	else
+		echo "Writing text into DIR using owner delegation. Using delegation password"
+		echo "Using an $TPM_SESSION session as default."
+		dirwrite -pwdo $OWNER_DELEGATION_PASSWORD \
+			-in $INDEX -ic $TEXT > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote into DIR."
+		else
+			echo " ERROR: Could not write into DIR."
+			dumpOutput
+		fi
+
+		TPM_SESSION=osap
+		echo "Writing text into DIR using owner delegation. Using delegation password"
+		echo "Using an $TPM_SESSION session as default."
+		dirwrite -pwdo $OWNER_DELEGATION_PASSWORD \
+			-in $INDEX -ic $TEXT > run.out
+		ERR=$?
+		if [ $ERR -eq 0 ]; then
+			echo " INFO: Successfully wrote into DIR."
+		else
+			echo " ERROR: Could not write into DIR."
+			dumpOutput
+		fi
+	fi
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+
+	echo "Resetting owner pointer"
+	setownerpointer -own > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully set owner pointer."
+	else
+		echo " ERROR: Could not set owner pointer."
+		dumpOutput
+	fi
+
+
+	echo "Invalidating family with ID $FAMILYID."
+	delegatemanage \
+		-invalidate \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully invalidate familyID $FAMILYID."
+	else
+		echo " ERROR: Could not invalidate familyID $FAMILYID."
+		dumpOutput
+	fi
+	
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+}
+
+doDelegationContextTest ()
+{
+	LABEL=1
+	OWNERDELFILE=ownerdel.bin
+	OWNERDELFILE_NEW=ownerdel_new.bin
+	OWNER_DELEGATION_PASSWORD=ownerdelgpassword
+
+	TPM_SESSION_REMEMBER=$TPM_SESSION
+
+	echo "Creating a family ID (C)"
+	delegatemanage \
+		-create $LABEL \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		FAMILYID=`cat run.out | grep "Family ID" | gawk '{ print $6 } '`
+		echo " INFO: Successfully created family ID $FAMILYID"
+	else
+		echo " ERROR: Could not create the family. Aborting this test"
+		dumpOutput
+		return 1
+	fi
+
+	echo "Activating family with ID $FAMILYID."
+	delegatemanage \
+		-enable 1 \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully enabled family with ID $FAMILYID"
+	else
+		echo " ERROR: Could not activate family with ID $FAMILYID. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+
+	echo "Creating owner delegation for ResetLockValue with increment of verification count"
+	createownerdelegation \
+		-inc \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x20000 \
+		-pwdo $OWNER_PASSWORD \
+		-pwdd $OWNER_DELEGATION_PASSWORD \
+		-of $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully performed owner delegation."
+	else
+		echo " ERROR: Could not perform owner delegation. Leaving test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Loading the owner delegation."
+	loadownerdelegation -pwdo $OWNER_PASSWORD \
+		-row 1 -if $OWNERDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded owner delegation blob."
+	else
+		echo " ERROR: Could not load owner delegation blob."
+	fi
+
+	echo "Reading the delegation table."
+	delegatereadtable > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully read the delegation table."
+		dumpOutput
+	else
+		echo " ERROR: Could not read the delegation table."
+		dumpOutput
+	fi
+
+	STORAGEKEY_PASSWORD_DELG=storagekey_delg
+	KEYDELFILE=keydel.bin
+
+	echo "Creating key delegation for the storage key to allow GetPubKey."
+	createkeydelegation \
+		-la $LABEL \
+		-id $FAMILYID \
+		-per1 0x20 \
+		-pwdk $STORAGEKEY_PASSWORD \
+		-hk $STORAGEKEY_HANDLE \
+		-pwdd $STORAGEKEY_PASSWORD_DELG \
+		-of $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully delegated the storage key."
+	else
+		echo " ERROR: Could not delegate the storage key. Aborting test."
+		dumpOutput
+		return 1
+	fi
+
+	echo "Verifying whether the key delegation blob is current."
+	verifydelegation -if $KEYDELFILE > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Delegation blob is current."
+	else
+		echo " ERROR: Delegation blob is not current."
+	fi
+
+
+	echo
+	echo
+	TPM_SESSION=dsap
+
+	echo "Creating a DSAP (key=$STORAGEKEY_HANDLE) session."
+	session dsap \
+		key $STORAGEKEY_HANDLE \
+		keypass $STORAGEKEY_PASSWORD_DELG  > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened DSAP session $ID."
+	else
+		echo " ERROR: Could not open DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing the DSAP (key) session $ID."
+	session dsap \
+		key $STORAGEKEY_HANDLE \
+		test $ID key $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the OSAP session."
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the DSAP (key) session $ID context."
+	savecontext -ha $ID \
+	          -rt $TPM_RT_AUTH \
+	          -la test \
+	          -of dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved DSAP session context."
+	else
+		echo " ERROR: Could not save DSAP session context."
+		dumpOutput
+	fi
+
+
+	echo "Testing the DSAP (key) session $ID."
+	session dsap \
+		key $STORAGEKEY_HANDLE \
+		test $ID key $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: DSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Flushing DSAP (key) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+	     $ERR -eq $TPM_BAD_PARAMETER ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could flush the DSAP session although it should be gone."
+	else
+		echo " ERROR: Unexpected error code: $ERR."
+		dumpOutput
+	fi
+
+	echo "Loading the DSAP (key) session [$ID] into TPM."
+	loadcontext -keep -ha $STORAGEKEY_HANDLE -if dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		echo " INFO: Successfully restored the DSAP session to handle $ID."
+	else
+		echo " ERROR: Could not restore the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing the DSAP (key) session $ID."
+	session dsap \
+		key $STORAGEKEY_HANDLE \
+		test $ID key $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+		echo "  New ENONCE=$ENONCE"
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Flushing DSAP (key) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed DSAP (key) session."
+	else
+		echo " ERROR: Error while flushing DSAP (key) session."
+		dumpOutput
+	fi
+
+
+	echo
+	echo
+
+	echo "Creating a DSAP (owner) session."
+	session dsap owner $OWNER_DELEGATION_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then	
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " Successfully opened DSAP session $ID."
+	else
+		echo " ERROR: Could not open DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the DSAP (owner) session context $ID."
+	savecontext -ha $ID \
+		-rt $TPM_RT_AUTH \
+		-la test \
+		-of dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved DSAP session context."
+	else
+		echo " ERROR: Could not save DSAP session context."
+		dumpOutput
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: DSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Flushing DSAP (owner) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+	     $ERR -eq $TPM_BAD_PARAMETER ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could flush the DSAP session although it should be gone."
+	else
+		echo " ERROR: Unexpected error code: $ERR."
+		dumpOutput
+	fi
+
+	echo "Loading DSAP (owner) session [$ID] into TPM."
+	loadcontext -keep -ha $ID -if dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully loaded the DSAP session."
+		NEW_HANDLE=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		if [ "$NEW_HANDLE" != "$ID" ]; then
+			echo " ERROR: Session handle has changed from $ID to $NEW_HANDLE"
+			ID=$NEW_HANDLE
+		fi
+	else
+		echo " ERROR: Could not load DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the DSAP (owner) session $ID context using SaveContext."
+	rm -rf dsapcontext.bin
+	savecontext -ha $ID -rt $TPM_RT_AUTH -la test -of dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved the DSAP session context."
+	else
+		echo " ERROR: Could not save the DSAP session context."
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: DSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Loading the DSAP (owner) session using LoadContext - no 'keephandle'"
+	loadcontext -ha $ID -if dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		echo " INFO: Successfully restored the DSAP session to handle $ID."
+	else
+		echo " ERROR: Could not restore the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Flushing DSAP (owner) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed the DSAP session."
+	else
+		echo " ERROR: Could not flush the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Testing DSAP (owner) session $ID."
+	session dsap test $ID owner $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: DSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+
+	echo
+	echo
+
+	echo "Creating a DSAP (TPM_ET_DEL_ROW) session."
+	session dsap \
+		row 1 $OWNER_DELEGATION_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "Successfully" | gawk '{ print $4} '`
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully opened DSAP session $ID."
+	else
+		echo " ERROR: Could not open DSAP session."
+		dumpOutput
+	fi
+
+
+	echo "Testing the DSAP (TPM_ET_DEL_ROW) session $ID."
+	session dsap \
+		test $ID row $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Saving the DSAP (TPM_ET_DEL_ROW) session $ID context."
+	savecontext -ha $ID \
+	          -rt $TPM_RT_AUTH \
+	          -la test \
+	          -of dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully saved DSAP session context."
+	else
+		echo " ERROR: Could not save DSAP session context."
+		dumpOutput
+	fi
+
+
+	echo "Testing the DSAP (TPM_ET_DEL_ROW) session $ID."
+	session dsap \
+		test $ID row $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " ERROR: DSAP session could be used but should have been flushed."
+	else
+		echo " INFO: Successfully completed command."
+	fi
+
+	echo "Flushing DSAP (TPM_ET_DEL_ROW) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq $TPM_INVALID_AUTHHANDLE -o \
+	     $ERR -eq $TPM_BAD_PARAMETER ]; then
+		echo " INFO: Successfully completed command."
+	elif [ $ERR -eq 0 ]; then
+		echo " ERROR: Could flush the DSAP session although it should be gone."
+	else
+		echo " ERROR: Unexpected error code: $ERR."
+		dumpOutput
+	fi
+
+	echo "Loading the DSAP (TPM_ET_DEL_ROW) session [$ID] into TPM."
+	loadcontext -keep -ha $STORAGEKEY_HANDLE -if dsapcontext.bin > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ID=`cat run.out | grep "New Handle" | gawk '{ print $4 }'`
+		echo " INFO: Successfully restored the DSAP session to handle $ID."
+	else
+		echo " ERROR: Could not restore the DSAP session."
+		dumpOutput
+	fi
+
+
+	echo "Testing the DSAP (TPM_ET_DEL_ROW) session $ID."
+	session dsap \
+		test $ID row $ENONCE $SSECRET > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		ENONCE=`cat run.out | grep "Even Nonce:" | gawk '{ print $3 }'`
+		SSECRET=`cat run.out | grep "Session Secret:" | gawk '{ print $3 }' `
+		echo " INFO: Successfully used the DSAP session."
+		echo "  New ENONCE=$ENONCE"
+	else
+		echo " ERROR: Could not use the DSAP session."
+		dumpOutput
+	fi
+
+	echo "Flushing DSAP (TPM_ET_DEL_ROW) session $ID."
+	flushspecific -ha $ID \
+		-rt $TPM_RT_AUTH > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully flushed DSAP (key) session."
+	else
+		echo " ERROR: Error while flushing DSAP (key) session."
+		dumpOutput
+	fi
+
+
+	TPM_SESSION=$TPM_SESSION_REMEMBER
+
+	echo "Invalidating family with ID $FAMILYID."
+	delegatemanage \
+		-invalidate \
+		-id $FAMILYID \
+		-pwdo $OWNER_PASSWORD > run.out
+	ERR=$?
+	if [ $ERR -eq 0 ]; then
+		echo " INFO: Successfully invalidate familyID $FAMILYID."
+	else
+		echo " ERROR: Could not invalidate familyID $FAMILYID."
+		dumpOutput
+	fi
+}

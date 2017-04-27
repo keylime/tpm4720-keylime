@@ -1,0 +1,241 @@
+################################################################################
+#
+#										#
+#		   	TPM makefile - Common to all variations			#
+#			     Written by Ken Goldman				#
+#		       IBM Thomas J. Watson Research Center			#
+#	      $Id: makefile-common 4716 2013-12-24 20:47:44Z kgoldman $		#
+#										#
+# (c) Copyright IBM Corporation 2006, 2010.					#
+# 										#
+# All rights reserved.								#
+# 										#
+# Redistribution and use in source and binary forms, with or without		#
+# modification, are permitted provided that the following conditions are	#
+# met:										#
+# 										#
+# Redistributions of source code must retain the above copyright notice,	#
+# this list of conditions and the following disclaimer.				#
+# 										#
+# Redistributions in binary form must reproduce the above copyright		#
+# notice, this list of conditions and the following disclaimer in the		#
+# documentation and/or other materials provided with the distribution.		#
+# 										#
+# Neither the names of the IBM Corporation nor the names of its			#
+# contributors may be used to endorse or promote products derived from		#
+# this software without specific prior written permission.			#
+# 										#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS		#
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT		#
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR		#
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT		#
+# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,	#
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT		#
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,		#
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY		#
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT		#
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE		#
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.		#
+#										#
+#################################################################################
+
+.SUFFIXES: .o
+
+# chose between the OpenSSL and FreeBL crypto libraries
+
+ifeq ($(CRYPTO_SUBSYSTEM),openssl)
+CRYPTO_SOURCE = tpm_crypto.c
+CRYPTO_OBJFILES = tpm_crypto.o
+CRYPTO_LINKLIBS = -lcrypto
+
+else 
+
+ifeq ($(CRYPTO_SUBSYSTEM),freebl)
+CRYPTO_SOURCE = tpm_crypto_freebl.c
+CRYPTO_OBJFILES = tpm_crypto_freebl.o
+CRYPTO_LINKLIBS = -lfreebl -lgmp -lnspr4 -lnssutil3 -lnss3
+
+else
+CRYPTO_SOURCE = tpm_crypto_unknown.c
+
+endif
+endif
+
+
+HEADERS = \
+	tpm_admin.h \
+	tpm_audit.h \
+	tpm_auth.h \
+	tpm_commands.h \
+	tpm_constants.h \
+	tpm_counter.h \
+	tpm_crypto.h \
+	tpm_cryptoh.h \
+	tpm_daa.h \
+	tpm_debug.h \
+	tpm_delegate.h \
+	tpm_digest.h \
+	tpm_error.h \
+	tpm_global.h \
+	tpm_identity.h \
+	tpm_init.h \
+	tpm_io.h \
+	tpm_key.h \
+	tpm_load.h \
+	tpm_maint.h \
+	tpm_memory.h \
+	tpm_migration.h \
+	tpm_nonce.h \
+	tpm_nvfile.h \
+	tpm_nvfilename.h \
+	tpm_nvram_const.h \
+	tpm_nvram.h \
+	tpm_owner.h \
+	tpm_pcr.h \
+	tpm_permanent.h \
+	tpm_platform.h \
+	tpm_process.h \
+	tpm_secret.h \
+	tpm_session.h \
+	tpm_sizedbuffer.h \
+	tpm_startup.h \
+	tpm_storage.h \
+	tpm_store.h \
+	tpm_structures.h \
+	tpm_ticks.h \
+	tpm_time.h \
+	tpm_transport.h \
+	tpm_types.h \
+	tpm_ver.h \
+	$(EXTRA_HEADERS) \
+	$(INSTANCE_HEADERS)
+
+CFILES = \
+	tpm_admin.c \
+	tpm_audit.c \
+	tpm_auth.c \
+	tpm_counter.c \
+	tpm_cryptoh.c \
+	tpm_daa.c \
+	tpm_debug.c \
+	tpm_delegate.c \
+	tpm_digest.c \
+	tpm_error.c \
+	tpm_global.c \
+	tpm_identity.c \
+	tpm_init.c \
+	tpm_io.c \
+	tpm_key.c \
+	tpm_load.c \
+	tpm_maint.c \
+	tpm_memory.c \
+	tpm_migration.c \
+	tpm_nonce.c \
+	tpm_nvfile.c \
+	tpm_nvram.c \
+	tpm_owner.c \
+	tpm_pcr.c \
+	tpm_permanent.c \
+	tpm_platform.c \
+	tpm_process.c \
+	tpm_secret.c \
+	tpm_server.c \
+	tpm_session.c \
+	tpm_sizedbuffer.c \
+	tpm_startup.c \
+	tpm_storage.c \
+	tpm_store.c \
+	tpm_ticks.c \
+	tpm_time.c \
+	tpm_transport.c \
+	tpm_ver.c \
+	$(CRYPTO_SOURCE) \
+	$(INSTANCE_CFILES)
+
+OBJFILES = \
+	tpm_admin.o \
+	tpm_audit.o \
+	tpm_auth.o \
+	tpm_cryptoh.o \
+	tpm_counter.o \
+	tpm_daa.o \
+	tpm_debug.o \
+	tpm_delegate.o \
+	tpm_digest.o \
+	tpm_error.o \
+	tpm_global.o \
+	tpm_identity.o \
+	tpm_init.o \
+	tpm_io.o \
+	tpm_key.o \
+	tpm_load.o \
+	tpm_maint.o \
+	tpm_memory.o \
+	tpm_migration.o \
+	tpm_nonce.o \
+	tpm_nvram.o \
+	tpm_nvfile.o \
+	tpm_owner.o \
+	tpm_pcr.o \
+	tpm_permanent.o \
+	tpm_platform.o \
+	tpm_process.o \
+	tpm_secret.o \
+	tpm_server.o \
+	tpm_session.o \
+	tpm_sizedbuffer.o \
+	tpm_startup.o \
+	tpm_store.o \
+	tpm_storage.o \
+	tpm_ticks.o \
+	tpm_time.o \
+	tpm_transport.o \
+	tpm_ver.o \
+	tpm_svnrevision.o \
+	$(CRYPTO_OBJFILES) \
+	$(EXTRA_OBJFILES) \
+	$(INSTANCE_OBJFILES)
+
+tpm_admin.o:		$(HEADERS)
+tpm_audit.o:		$(HEADERS)
+tpm_auth.o:		$(HEADERS)
+tpm_crypto.o:		$(HEADERS)
+tpm_crypto_freebl.o:	$(HEADERS)
+tpm_cryptoh.o:		$(HEADERS)
+tpm_counter.o:		$(HEADERS)
+tpm_daa.o:		$(HEADERS)
+tpm_debug.o:		$(HEADERS)
+tpm_delegate.o:		$(HEADERS)
+tpm_digest.o:		$(HEADERS)
+tpm_error.o:		$(HEADERS)
+tpm_global.o:		$(HEADERS)
+tpm_identity.o:		$(HEADERS)
+tpm_ima.o:		$(HEADERS)
+tpm_init.o:		$(HEADERS)
+tpm_instance.o:		$(HEADERS)
+tpm_io.o:		$(HEADERS)
+tpm_key.o:		$(HEADERS)
+tpm_load.o:		$(HEADERS)
+tpm_maint.o:		$(HEADERS)
+tpm_memory.o:		$(HEADERS)
+tpm_migration.o:	$(HEADERS)
+tpm_nonce.o:		$(HEADERS)
+tpm_nvram.o:		$(HEADERS)
+tpm_nvfile.o:		$(HEADERS)
+tpm_owner.o:		$(HEADERS)
+tpm_pcr.o:		$(HEADERS)
+tpm_permanent.o:	$(HEADERS)
+tpm_platform.o:		$(HEADERS)
+tpm_process.o:		$(HEADERS)
+tpm_secret.o:		$(HEADERS)
+tpm_session.o:		$(HEADERS)
+tpm_server.o:		$(HEADERS)
+tpm_sizedbuffer.o:	$(HEADERS)
+tpm_startup.o:		$(HEADERS)
+tpm_store.o:		$(HEADERS)
+tpm_storage.o:		$(HEADERS)
+tpm_thread.o:		$(HEADERS)
+tpm_ticks.o:		$(HEADERS)
+tpm_time.o:		$(HEADERS)
+tpm_transport.o:	$(HEADERS)
+tpm_ver.o:		$(HEADERS)

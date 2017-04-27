@@ -1,0 +1,364 @@
+$Id: README 4702 2013-01-03 21:26:29Z kgoldman $
+
+(c) Copyright IBM Corporation 2010:
+
+This documentation is provided with source code (Trusted Platform
+Module (TPM) subject to the following license:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.
+
+Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+Neither the names of the IBM Corporation nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+------------
+Introduction
+------------
+
+This release has three parts:
+
+.../lib: A library of low level TPM function calls.  
+
+.../utils: A large number of small command line programs that call the
+above library.  These are useful for learning and playing with the
+TPM.
+
+.../utils/test_console.sh: A bash script that strings together the
+command line programs to form a TPM regression test.  The tests are in
+a subdirectory .../utils/modules.
+
+The instructions below are for Linux.  The lib and utils have been
+ported to Windows.  The bash script has not.
+
+Prerequisites
+-------------
+
+OpenSSL: 
+
+The test suite requires OpenSSL for low level crypto operations.  
+
+It has been tested with 0.9.8 and 1.0.0 (Linux) and 0.9.8 (Windows).
+
+For Linux source, see 
+
+	http://www.openssl.org 
+
+To determine the OpenSSL version installed:
+
+	> openssl version
+
+For Windows binaries, see 
+
+	http://www.slproweb.com/products/Win32OpenSSL.html 
+
+The build is known to work for RHEL 5.2 and later. We do not support
+earlier versions.
+
+
+Quick Compile - Linux
+-------------
+
+A number of build scripts are included for useful configurations.
+
+NOTE: This library and the TPM must match.  For example, both or
+neither must use vTPM extensions.
+
+comp-sockets.sh		: TCP/IP socket interface, standard TPM
+comp-chardev.sh		: character device interface, standard TPM
+comp-serialp.sh         : character device interface, TPM on serial port
+comp-unixio.sh		: Unix domain socket interface, standard TPM
+
+
+Compiling - Linux
+---------
+
+The TPM library contains a number of low-level utilities for creating
+and managing keys, signing and encrypting data, and using data and
+keys in a secure way.
+
+The library, called libtpm.a, will be in the ./lib subdirectory, the
+utilities in the ./utils subdirectory.
+
+Unless using the 'Quick Compile" scripts, do:
+
+> ./autogen
+> ./configure
+> make
+
+This compiles the library for communication over TCP sockets. The
+./configure has to be replaced with
+
+> ./configure --enable-chardev
+
+if the tools are supposed to be compiled for communication with a TPM
+through /dev/tpm0.
+
+To compile the library with communication over UnixIO sockets, it must
+be configured as follows:
+
+> ./configure --enable-unixio
+
+Note: A fairly recent automake/autoconf environment is needed to properly
+      generate the Makefiles etc. Fedora Core 3 and 4 provide the 
+      necessary versions of these tools.
+
+If 'make install' is also done, the library will be moved to the
+default library location, usually /usr/local/lib, the include files
+will be moved to /usr/local/include.
+
+In addition, a number of sample utilities are provided for using the
+TPM library.  They will be in the ./utils subdirectory after the
+package has been built. If 'make install' is done, the utilities will
+be installed in /usr/local/bin.
+
+See the INSTALL file for more information on changing the location
+where the files will be installed.
+
+Compiling - Windows
+---------
+
+The Windows port uses only the TCP/IP socket interface.  Use the TPM
+proxy to connect to a hardware TPM.
+
+Compile using MinGW and makefile.mak
+
+	http://sourceforge.net/projects/mingw/files/
+	http://wingw.org
+
+Compile the ...\lib directory first to create the DLL.  Then compile
+the ...\utils directory.
+
+The ...\utils directory requires the file applink.c.  See the OpenSSL
+FAQ at:
+	
+	http://www.openssl.org/support/faq.html#PROG2
+
+	If the applink.c file is not copied, some versions of gcc will
+	give the misleading error: No rule to make target 'xxx.exe'.
+
+Copy the DLL to a place in the Windows DLL path.  E.g., copy to the
+...\utils directory.
+
+
+Preprocessor defines
+--------------------
+
+The following preprocessor variables have been defined for the TPM library:
+
+TPM_USE_CHARDEV   Generate client code to talk to a TPM using character
+                  device communication. This is the typical way of 
+                  communicating with a hardware TPM or as a matter of fact
+                  we are also using this for communication with the virtual
+                  TPM when for example running the tools inside a VM.
+
+TPM_USE_UNIXIO    Generate client code to talk to a TPM using UnixIO socket
+                  communication.
+
+TPM_MAXIMUM_KEY_SIZE  Build a library with support for a maximum key size
+                      for public key cryptography as given. The default 
+                      value applied by the configure script is 4096 (bits).
+
+USE_SERIAL_PORT   Generate code so that the tools can communicate to a 
+                  TPM behind a serial port. This define works only in
+                  conjunction with TPM_USE_CHARDEV.
+
+USE_PARTIAL_READ  When receiving responses from a TPM and if the device 
+                  driver allows it, this define enables code to read
+                  a whole TPM response with multiple read()s. A first
+                  read may for example read the header of the response
+                  up to the indicator for the size of the response, then
+                  allocate the necessary buffer and only then read the
+                  rest of the packet.
+
+
+-----------------------------
+IBM TPM Regression Test Suite
+-----------------------------
+
+	- - - - - - - - - - - - - -
+	Socket-enabled Software TPM
+	- - - - - - - - - - - - - -
+
+After the make it should be possible to run the test suite against the
+TPM. Please run it against a socket-enable TPM first and compile the
+library for sockets as well! Then do the following using a bash shell:
+
+If the TPM is using TCP/IP sockets and listening on port 6543:
+
+> export TPM_SERVER_PORT=6543 
+
+If the TPM is using Unix domain sockets and listening at file name
+/tmp/tpmdomain
+
+> export TPM_UNIXIO_PATH=/tmp/tpmdomain
+
+If the TPM is using sockets and running on the same machine as the
+test suite.
+
+> export TPM_SERVER_NAME=localhost 
+
+Start the TPM in another shell after setting its environment variables
+                     (TPM_PATH,TPM_PORT)
+
+> cd utils
+> ./tpmbios
+
+Kill the TPM in the other shell and restart it
+
+> ./tpmbios
+
+     The directory specified by TPM_PATH will now have the file
+     00.permall. Once these files are available you can immediately
+     process to the next step whenever you start the TPM.
+
+The test suite also requires a 2nd TPM for the key migration test. A
+2nd TPM should be started on a different port (TPM_PORT) and with a
+different path for its state files (TPM_PATH) to avoid collisions of
+the state information written into the 00.* files. The 2nd TPM should
+be running in a different shell and have been initialized using the
+same procedure as above. By default the test suite expects this 2nd
+TPM to be running on port 6545 (see utils/modules/test_constants
+variables SLAVE_TPM_PORT) on the same system as the test suite.
+
+> export SLAVE_TPM_PORT=6545
+> export SLAVE_TPM_SERVER=localhost
+
+	- - - - - - -
+	Hardware TPM 
+	- - - - - - -
+
+The TPM_SERVER_PORT and TPM_SERVER_NAME environment variables are not
+required.
+
+On a production platform that implements a TCG BIOS, this section
+should not be required.  The BIOS should have run TPM_Startup, and the
+manufacturing process should have enabled and activated the TPM.
+
+For a test platform:
+
+The first ./tpmbios emulates startup commands normally run by the
+BIOS.  It also enables and activates the TPM.  Normally, the TPM
+requires a reboot to activate the TPM.  Before doing this, test to see
+if the TPM is already enabled and activated:
+
+> ./getcapability -cap 4 -scap 108
+
+If Disabled is TRUE or Deactivated is TRUE something failed in the
+./tpmbios command.
+
+Next 
+
+> ./getcapability -cap 4 -scap 109
+
+if Deactivated is FALSE, the TPM is ready for use.  Otherwise reboot
+and retry.  It should succeed after the reboot
+
+
+	- - - - - -
+	Test Suite
+	- - - - - -
+
+Now move on to the test suite:
+
+	Since the test suite affects TPM persistent state, including
+	some lifetime locks, the entire state in TPM_PATH should be
+	removed before running the test suite.
+
+Using the bash shell:
+
+./test_console.sh 2>&1 | tee out.log4j
+
+Then type the test item you want to run. 
+
+For a software TPM, to run all tests type 'all'.
+
+	Do not run 'all' against a hardware TPM, as it will create
+	lifetime locks.  For a hardware TPM, select 'hwtpm'.
+
+With the above command the test suite will write all output also into
+the file out.log4j.  This file should be looked at.  Errors are
+indicated with 'ERROR' and reflect a serious problem. Warnings are
+indicated with 'WARN' and can be ignored.
+
+
+Runtime environment variables
+-----------------------------
+
+A number of environment variables can be used to select the behavior of the
+TPM library and its applications. 
+
+
+TPM_SERVER_NAME and TPM_SERVER_PORT : 
+				These two variables define the
+				IP address and port where the TPM is
+				running on. These variables need only
+				be set if sockets are used for
+				communication. Examples are:
+				TPM_SERVER_NAME=localhost
+				TPM_SERVER_PORT=6543
+
+TPM_DEVICE : This variable can be set if a character device is used for
+             communication with the TPM. The default value is '/dev/tpm0'
+             when this variable is not set.
+
+TPM_UNIXIO_PATH : If the library was compiled for communication with the
+                  TPM over UnixIO sockets then the path to the UnixIO
+                  socket must be given through this environment variable.
+
+TPM_SESSION : With this variable the preferred session type may be chosen,
+              such as 'oiap', 'osap' or 'dsap'. Each TPM function will
+              choose the most appropriate type of session. For example,
+              if a function supports only 'oiap', but 'dsap' is chosen,
+              it will fall back to use oiap. If a function supports
+              'oiap', 'osap' and 'dsap', then it will use whatever this
+              variable indicates.
+ 
+TPM_ET_ENCRYPT_AES : Certain OSAP session parameters will be encrypted
+                     using AES cipher if this env. variable is set to
+                     '1'.
+
+TPM_TRANSPORT : If this environment variable is set to '1', the test suite
+                will try to use transport mode whenever possible.
+
+TPM_TRANSPORT_ENC : If TPM_TRANSPORT has been set to '1', then this 
+                    environment variable declares the type of encryption
+                    being used. The default is 'MGF1'. Possible values
+                    are 'MGF1', 'OFB' or 'CTR'.
+
+TPM_DUMP_COMMANDS: Dumps the TPM requests and responses to the screen for
+                   all transaction between the utilities and the (v)TPM.
+
+TPM_NO_KEY_SWAP : If this environment variable is set to "1", then do not
+                  swap any keys. Do not set it in connection with transport
+                  mode!
+
+TPM_HW_DRIVER : If this environment variable is set, the TPM_SHA1Update
+		limits the TPM driver buffer size to 2048 to accommodate the
+		Linux driver. 
+
+		This buffer size is always used when TPM_USE_CHARDEV
+		is defined.  This environment variable is typically
+		used when the utilities are compiled for sockets, but
+		the socket server is actually a proxy for a hardware TPM.
+
