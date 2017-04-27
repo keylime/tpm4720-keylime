@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset: 8; -*- */
 /********************************************************************************/
 /*										*/
 /*			     	TPM PCR Processing Functions			*/
@@ -57,6 +58,7 @@
 #include <tpm_constants.h>
 #include <tpm_structures.h>
 #include "tpmfunc.h"
+#include "deepquote.h"
 
 
 uint32_t TPM_ValidateSignature(uint16_t sigscheme,
@@ -146,6 +148,51 @@ uint32_t TPM_ValidatePCRCompositeSignature(TPM_PCR_COMPOSITE *tpc,
 	}
 
 	memcpy(&(tqi.version), response.buffer, response.used);
+	memcpy(&(tqi.fixed), "QUOT", 4);
+	memcpy(&(tqi.externalData), antiReplay, TPM_NONCE_SIZE);
+	ret = TPM_WritePCRComposite(&ser_tpc, tpc);
+	if ((ret & ERR_MASK)) {
+		RSA_free(rsa);
+		return ret;
+	}
+	/* create the hash of the PCR_composite data for the quoteinfo structure */
+	TSS_sha1(ser_tpc.buffer, ser_tpc.used, tqi.digestValue);
+
+	ret = TPM_WriteQuoteInfo(&ser_tqi, &tqi);
+	if ((ret & ERR_MASK)) {
+		RSA_free(rsa);
+		return ret;
+	}
+	
+	ret = TPM_ValidateSignature(sigscheme,
+	                            &ser_tqi,
+	                            signature,
+	                            rsa);
+	RSA_free(rsa);
+	return ret;
+}
+
+/* 
+ * Validate the signature over a PCR composite structure. take in vinfo rather than query
+ * Returns '0' on success, an error code otherwise.
+ */
+uint32_t TPM_ValidatePCRCompositeSignatureNoCap(TPM_PCR_COMPOSITE *tpc,
+                                           unsigned char *antiReplay,
+                                           RSA *rsa,
+                                           struct tpm_buffer *signature,
+                                           uint16_t sigscheme)
+{
+	uint32_t ret;
+	TPM_QUOTE_INFO tqi;
+	STACK_TPM_BUFFER (ser_tqi);
+	STACK_TPM_BUFFER (ser_tpc);
+
+	/* hard code version to 1.1 no revs */
+	tqi.version.major = 0x01;
+	tqi.version.minor = 0x01;
+	tqi.version.revMajor = 0x00;
+	tqi.version.revMinor = 0x00;
+	
 	memcpy(&(tqi.fixed), "QUOT", 4);
 	memcpy(&(tqi.externalData), antiReplay, TPM_NONCE_SIZE);
 	ret = TPM_WritePCRComposite(&ser_tpc, tpc);
@@ -276,10 +323,16 @@ uint32_t TPM_Quote(uint32_t keyhandle,
 		/* move Network byte order data to variables for hmac calculation */
 		c = 0;
 		/* calculate authorization HMAC value */
-		ret = TSS_authhmac(pubauth,TSS_Session_GetAuth(&sess),TPM_HASH_SIZE,TSS_Session_GetENonce(&sess),nonceodd,c,
-		                   TPM_U32_SIZE,&ordinal,
-		                   TPM_HASH_SIZE,externalData,
-		                   serPcrSel.used,serPcrSel.buffer,
+		ret = TSS_authhmac(pubauth,TSS_Session_GetAuth(&sess),
+				   TPM_HASH_SIZE,
+				   TSS_Session_GetENonce(&sess),
+				   nonceodd,c,
+		                   TPM_U32_SIZE,
+				   &ordinal,
+		                   TPM_HASH_SIZE,
+				   externalData,
+		                   serPcrSel.used,
+				   serPcrSel.buffer,
 		                   0,0);
 		if (ret != 0) {
 			TSS_SessionClose(&sess);
@@ -287,14 +340,15 @@ uint32_t TPM_Quote(uint32_t keyhandle,
 		}
 		/* build the request buffer */
 		ret = TSS_buildbuff("00 C2 T l l % % L % o %",&tpmdata,
-		                             ordinal,
-		                               keyhndl,
-		                                 TPM_HASH_SIZE,externalData,
-		                                   serPcrSel.used, serPcrSel.buffer,
-		                                     TSS_Session_GetHandle(&sess),
-		                                       TPM_NONCE_SIZE,nonceodd,
-		                                         c,
-		                                          TPM_HASH_SIZE,pubauth);
+				    ordinal,
+				    keyhndl,
+				    TPM_HASH_SIZE,externalData,
+				    serPcrSel.used, serPcrSel.buffer,
+				    
+				    TSS_Session_GetHandle(&sess),
+				    TPM_NONCE_SIZE,nonceodd,
+				    c,
+				    TPM_HASH_SIZE,pubauth);
 		if ((ret & ERR_MASK) != 0) {
 			TSS_SessionClose(&sess);
 			return ret;
@@ -345,8 +399,8 @@ uint32_t TPM_Quote(uint32_t keyhandle,
 	} else  /* no authdata required */ {
 		/* build the request buffer */
 		ret = TSS_buildbuff("00 C1 T l l % %",&tpmdata,
-		                             ordinal,
-		                               keyhndl,
+				    ordinal,
+				    keyhndl,
 		                                 TPM_HASH_SIZE,externalData,
 		                                   serPcrSel.used,serPcrSel.buffer);
 		if ((ret & ERR_MASK) != 0) return ret;
@@ -386,6 +440,402 @@ uint32_t TPM_Quote(uint32_t keyhandle,
 	}
 	return 0;
 }
+	
+int TPM_WriteDeepQuoteBin(const char *path,
+			  const TPM_PCR_SELECTION *htps,
+			  const DeepQuoteInfo *dqi,
+        	struct tpm_buffer *vq_signature,
+        	TPM_PCR_COMPOSITE *vq_tpc)
+{
+	FILE *fp;
+	struct DeepQuoteBin dqb = {
+		.ppcrSel = {
+			.sizeOfSelect = htons(3),
+			.pcrSelect = {
+				[0] = htps->pcrSelect[0],
+				[1] = htps->pcrSelect[1],
+				[2] = htps->pcrSelect[2]
+			}
+		},
+		.dqi = *dqi
+	};
+	
+	if (path == NULL) {
+		fprintf(stderr, "Path to DeepQuoteBin cannot be NULL\n");
+		return 1;
+	}
+	
+	if ((fp = fopen(path, "wb")) == 0) {
+		fprintf(stderr, "Failed to open '%s'\n", path);
+		return 1;
+	}
+
+	if (fwrite(&dqb, sizeof(dqb), 1, fp) != 1) {
+		perror("Failed to write out DeepQuoteBin");
+		return 1;
+	}
+
+	/* write out the vTPM quote too */
+    if(fwrite(vq_signature,sizeof(uint32_t),3,fp)<3) {
+    perror("Error writing signature header.\n");
+    exit(-1);
+    }
+    if(fwrite(vq_signature->buffer,sizeof(char),vq_signature->used,fp)<vq_signature->used) {
+    perror("Error writing signature data.\n");
+    return 1;
+    }
+    if(fwrite(vq_tpc,sizeof(TPM_PCR_COMPOSITE),1,fp)<1) {
+    perror("Error writing PCR composite.\n");
+    return 1;
+    }
+    if(fwrite(vq_tpc->pcrValue.buffer,sizeof(BYTE),vq_tpc->pcrValue.size,fp)<vq_tpc->pcrValue.size) {
+    perror("Error writing PCR buffer.\n");
+    return 1;
+    }
+
+	return fclose(fp);
+}
+
+/****************************************************************************/
+/*                                                                          */
+/* Validate a DeepQuoteInfo's signature                                     */
+/*                                                                          */
+/* The arguments are...                                                     */
+/*                                                                          */
+/* pubkey    is a pointer to a buffer containing a raw public AIK           */
+/*           (as a TPM would return it)                                     */
+/* htps      is a pointer to a selection of physical PCRs                   */
+/* nonce     is a pointer to the nonce passed to TPM_DeepQuote()            */
+/* dqi       is a pointer to a DeepQuoteInfo struct as returned from        */
+/*           TPM_DeepQuote()                                                */
+/*                                                                          */
+/****************************************************************************/
+uint32_t TPM_ValidateDeepQuoteInfo(RSA *pubKeyRSA,
+				   TPM_PCR_SELECTION *htps,
+				   unsigned char *nonce,
+				   DeepQuoteInfo *dqi)
+{
+	SHA_CTX sha;
+	/* ExternalData used by vTPM's GetParentQuote */
+	unsigned char extData1[TPM_HASH_SIZE];
+	/* ExternalData used by pTPM's Quote */
+	unsigned char extData2[TPM_HASH_SIZE];
+	/* Composite hash of the pPCRs */
+	unsigned char compDigest[TPM_DIGEST_SIZE];
+	unsigned char quoteBlob[sizeof(quot_hdr) + sizeof(compDigest) + sizeof(extData2)];
+	uint32_t valueSize;
+	size_t offset=0;
+	pubkeydata pubKeyData;
+	STACK_TPM_BUFFER (signatureBuf);
+	STACK_TPM_BUFFER (blobBuf);
+	int ret;
+    
+	/* Make the physical PCR Selection */
+	struct PCR_SELECTION ppcrSel = {
+		.sizeOfSelect = htons(3),
+		.pcrSelect = {
+			[0] = htps->pcrSelect[0],
+			[1] = htps->pcrSelect[1],
+			[2] = htps->pcrSelect[2]	    
+		}
+	};
+    
+	/* For now we're going to ignore vpcr mask */
+	struct PCR_INFO_SHORT vpcrData = {
+		.pcrSelection = {
+			.sizeOfSelect = htons(3),
+			.pcrSelect = {0,},
+		},
+		.localityAtRelease = 1,
+		.digestAtRelease   = {0,}
+	};
+	uint16_t sigscheme = TPM_SS_RSASSAPKCS1v15_SHA1;    
+
+	dump_bytes(dqi->signature, "Signature", 256);
+    
+	dump_hash(nonce, "extData");
+	dump_bytes(dquot_hdr, "dquot", sizeof(dquot_hdr));
+	dump_bytes(&vpcrData, "vPCR_INFO_SHORT", sizeof(vpcrData));
+
+	/* GetParentQuote's extData is just the composite hash of the vPCRs */
+	SHA1_Init(&sha);
+	SHA1_Update(&sha, dquot_hdr, sizeof(dquot_hdr));
+	SHA1_Update(&sha, nonce,     TPM_NONCE_SIZE);
+	SHA1_Update(&sha, &vpcrData,  sizeof(vpcrData));
+	SHA1_Final(extData1, &sha);
+	dump_hash(extData1, "ParentQuote.extData");
+
+	/* Dump out information we use to calculate Quote's extData */
+	logfprintf(stderr, "\n\n  NumPCR: %u, NumHashes: %u, ExtraFlags: %x\n", dqi->values.numPCRVals, dqi->values.numInfoHashes, *(uint32_t *)dqi->extraInfoFlags);
+	dump_bytes(&dqi->extraInfoFlags, "ExtraInfoFlags", 4);
+	dump_bytes(dqi->values.PCRVals, "PCRVals", 20 * dqi->values.numPCRVals);
+	dump_bytes(dqi->values.infoHashes, "InfoHashes", 20 * dqi->values.numInfoHashes);
+
+	/* Calculate the extData to Quote */
+	SHA1_Init(&sha);
+	SHA1_Update(&sha, &dqi->extraInfoFlags, 4);
+	SHA1_Update(&sha, extData1, TPM_NONCE_SIZE);
+	SHA1_Update(&sha, dqi->values.infoHashes, TPM_HASH_SIZE * dqi->values.numInfoHashes);
+	SHA1_Final(extData2, &sha);
+	dump_bytes(extData2, "Quote.externData", TPM_DIGEST_SIZE);
+
+	/* Create the valueSize parameters in network order */
+	valueSize = htonl(dqi->values.numPCRVals * 20);
+    
+	/* Calculate composite hash of the serialized versions of these */
+	SHA1_Init(&sha);
+	SHA1_Update(&sha, &ppcrSel, sizeof(ppcrSel));
+	SHA1_Update(&sha, &valueSize , sizeof(valueSize));
+	SHA1_Update(&sha, dqi->values.PCRVals, dqi->values.numPCRVals * 20);
+	SHA1_Final(compDigest, &sha);
+
+	/* Dump the hash and selection out; we'll be using them to recreate the blob Quote signed */
+	dump_bytes(&ppcrSel,   "Quote.ppcrSel",    sizeof(ppcrSel));
+	dump_bytes(compDigest, "Quote.compDigest", TPM_DIGEST_SIZE);
+
+    
+	/* Recreate the blob Quote signed */
+	memcpy(&quoteBlob[offset], quot_hdr,   sizeof(quot_hdr));
+	offset+= sizeof(quot_hdr);
+	memcpy(&quoteBlob[offset], compDigest, sizeof(compDigest));
+	offset+= sizeof(compDigest);
+	memcpy(&quoteBlob[offset], extData2,   sizeof(extData2));
+	offset+= sizeof(extData2);
+
+	/* Set up buffers of the blob and signature */
+	logfprintf(stderr, "Total size of blob is %zu\n", offset);
+	SET_TPM_BUFFER(&blobBuf, quoteBlob, sizeof(quoteBlob));
+	SET_TPM_BUFFER(&signatureBuf, dqi->signature, sizeof(dqi->signature)); 
+
+	dump_bytes(pubKeyData.pubKey.modulus, "Public Key", 256);
+
+	ret = TPM_ValidateSignature(sigscheme, 
+				    &blobBuf,
+				    &signatureBuf, 
+				    pubKeyRSA); 
+	if (ret != 0) {
+		return ret;
+	}
+
+	return 0;
+
+}
+
+
+
+
+/****************************************************************************/
+/*                                                                          */
+/* DEEPLY Quote the specified PCR registers                                 */
+/*                                                                          */
+/* The arguments are...                                                     */
+/*                                                                          */
+/* keyhandle is the handle of the key used to sign the results              */
+/* tps       selection of the PCRs to quote                                 */
+/* keyauth   is the authorization data (password) for the key               */
+/*           if NULL, it will be assumed that no password is required       */
+/* data      is a pointer to a nonce                                        */
+/* tpc       is a pointer to an area to receive a pcrcomposite structure    */
+/* signature is a pointer to an area to receive the signature               */
+/*                                                                          */
+/****************************************************************************/
+uint32_t TPM_DeepQuote(unsigned char *keyauth,
+		       unsigned char *externalData,
+                       TPM_PCR_SELECTION *vtps,
+                       TPM_PCR_SELECTION *ptps,
+		       DeepQuoteInfo *dqi)
+{
+	
+	uint32_t ret;
+	int i, j;
+	uint32_t sessHandle;
+	unsigned char c;
+	uint32_t keyhandle;
+	uint32_t extraInfo= htonl(VTPM_QUOTE_FLAGS_HASH_UUID);
+	STACK_TPM_BUFFER( tpmdata );
+	session sess;
+	unsigned char nonceodd[TPM_NONCE_SIZE];
+	unsigned char pubauth[TPM_HASH_SIZE];
+	uint32_t ordinal = htonl(TPM_ORD_DeepQuote);
+	uint32_t offset;
+	uint32_t pcrOffset;	
+	uint32_t infoHashOffset;
+	STACK_TPM_BUFFER( ptSel );
+	STACK_TPM_BUFFER( vtSel );
+	uint32_t numPCR = 0;
+	uint32_t numInfoHashes = 0;
+	uint32_t paramSize = 0;
+
+	/* Auth is done against TPM_KH_OWNER */
+	keyhandle = TPM_KH_OWNER;	
+
+	/* check input arguments */
+	if (externalData == NULL || keyauth == NULL || dqi == NULL)  
+		return ERR_NULL_ARG;
+
+	/* Validate key */
+	ret = needKeysRoom(keyhandle, 0, 0, 0);
+	if (ret != 0) 
+		return ret;
+
+	/* Create selection for physical PCRs */
+	ret = TPM_WritePCRSelection(&ptSel, ptps);
+	if ((ret & ERR_MASK)) {
+		fprintf(stderr, "Failed to create phys. PCR selection [%s]\n", TPM_GetErrMsg(ret));
+		return ret;
+	}
+
+	/* Create selection for virtual PCRs */
+	ret = TPM_WritePCRSelection(&vtSel, vtps);
+	if ((ret & ERR_MASK)) {
+		fprintf(stderr, "Failed to create virt. PCR selection [%s]\n", TPM_GetErrMsg(ret));		
+		return ret;
+	}
+
+	/* Requested PCRs */
+	for (i=0; i < ptps->sizeOfSelect; i++) {
+		BYTE selectByte = ptps->pcrSelect[i];
+		for(j = 0; j < 8; j++) {
+			numPCR += selectByte & 1;
+			selectByte = selectByte >> 1;
+		}
+	}
+	logfprintf(stderr, "Num PCRs selected: %d\n", numPCR);
+	
+
+	/* Open an __OIAP__ session. This bit me good as TPM_Quote can be used via 
+	 * plain ORD commands, OSAP, or DSAP, while DeepQuote as currently implemented
+	 * only supports OIAP*/
+	ret = TSS_SessionOpen(SESSION_OIAP, &sess, keyauth,TPM_ET_KEYHANDLE,keyhandle);
+	if (ret != 0)  {
+		fprintf(stderr, "Failed to auth [%s]\n", TPM_GetErrMsg(ret));
+		return ret;
+	}
+	
+	/* Get session handle */
+	sessHandle = TSS_Session_GetHandle(&sess);
+	/* Don't continue session */
+	c = 0;
+	/* Generate odd nonce */
+	TSS_gennonce(nonceodd);
+
+	/* calculate authorization HMAC value */
+	ret = TSS_authhmac(pubauth,TSS_Session_GetAuth(&sess),
+			   TPM_HASH_SIZE,TSS_Session_GetENonce(&sess),nonceodd,c,
+			   TPM_U32_SIZE,&ordinal,
+			   TPM_HASH_SIZE,externalData,
+			   vtSel.used, vtSel.buffer,
+			   ptSel.used, ptSel.buffer,
+			   TPM_U32_SIZE, &extraInfo,
+			   0,0);
+	if (ret != 0) {
+		fprintf(stderr, "Failed to generate HMAC [%s]\n", TPM_GetErrMsg(ret));;
+		TSS_SessionClose(&sess);
+		return ret;
+	}
+	
+
+	// <header> 0:ord 1:ext 2:vtps 3:ptps 4:extraInfo 5:sessHandle 6:oddNonce 7:continue 8:hmac
+	// 00 C2 T  l     %     %      %      l           L            %          o          %
+	ret = TSS_buildbuff("00 C2 T l % % % l L % o %", 
+			    &tpmdata,         /* dest buffer             */
+			    ordinal,          /* [0] T:     <ord>        */
+			    TPM_HASH_SIZE,    /* [1] %.len: <ext>        */
+			    externalData,     /* [1] %.buf: <ext>        */
+			    vtSel.used,       /* [2] %.len: <vtSel       */
+			    vtSel.buffer,     /* [2] %.buf: <vtSel       */
+			    ptSel.used,       /* [3] %.len: <ptSel>      */
+			    ptSel.buffer,     /* [3] %.buf: <ptSel>      */
+			    extraInfo,        /* [4] l:     <extraInfo>  */			    
+			    sessHandle,       /* [5] L:     <sessHandle> */
+			    TPM_NONCE_SIZE,   /* [6] %.len: <oddNonce>   */
+			    nonceodd,         /* [6] %.buf: <oddNonce>   */
+			    c,                /* [7] o:     <continue>   */
+			    TPM_HASH_SIZE,    /* [8] %.len  <pubauth>    */
+			    pubauth           /* [8] %.buf  <pubauth>    */
+			    );
+
+	if ((ret & ERR_MASK) != 0) {
+		fprintf(stderr, "Failed to build buffer [%s]\n", TPM_GetErrMsg(ret));
+		TSS_SessionClose(&sess);
+		return ret;
+	}
+
+	/* transmit the request buffer to the TPM device and read the reply */
+	ret = TPM_Transmit(&tpmdata,"Deep Quote");
+	TSS_SessionClose(&sess);
+	if (ret != 0) {
+		fprintf(stderr, "Unable to transmit to TPM [%s]\n", TPM_GetErrMsg(ret));
+		return ret;
+	}
+
+	ret =  tpm_buffer_load32(&tpmdata,TPM_PARAMSIZE_OFFSET, &paramSize);
+	if (ret != 0) {
+		fprintf(stderr, "Unable to read paramSize [%s]\n", TPM_GetErrMsg(ret));
+		return ret;
+	}
+	logfprintf(stderr, "Size is %du\n", paramSize);
+	
+	/* Header and signature blob */
+	offset  = 10 + 256;
+		
+	infoHashOffset = offset;
+	/* extraInfo hashes */
+	if (extraInfo & htonl(VTPM_QUOTE_FLAGS_HASH_UUID)) {
+		offset += 20;
+		numInfoHashes++;
+	}
+	if (extraInfo & htonl(VTPM_QUOTE_FLAGS_VTPM_MEASUREMENTS)) {
+		offset += 20;
+		numInfoHashes++;
+	}
+	if (extraInfo & htonl(VTPM_QUOTE_FLAGS_GROUP_INFO)) {
+		offset += 20;
+		numInfoHashes++;
+	}
+	if (extraInfo & htonl(VTPM_QUOTE_FLAGS_GROUP_PUBKEY)) {
+		offset += 20;
+		numInfoHashes++;
+	}
+	
+	pcrOffset = offset;
+	offset += numPCR * sizeof(TPM_PCRVALUE);
+	logfprintf(stderr, "Size of return data %d\n", offset);
+
+	/* check the HMAC in the response */
+	ret = TSS_checkhmac1(&tpmdata,ordinal,nonceodd,
+			     TSS_Session_GetAuth(&sess),TPM_HASH_SIZE,
+			     offset-TPM_DATA_OFFSET, TPM_DATA_OFFSET,
+			     0,0);
+
+	if ((ret & ERR_MASK)) {
+		fprintf(stderr, "Failed to validate hmac [%s]\n", TPM_GetErrMsg(ret));
+		return ret;
+	}
+
+	if (pcrOffset != (infoHashOffset + (numInfoHashes * 20))) {
+		fprintf(stderr, "Inconsistent offsets. pcrOff: %x, infoHashOff: %x, numInfo: %u, numPCR %u\n",
+			pcrOffset, infoHashOffset, numInfoHashes, numPCR);
+		return -1;
+	}
+
+	dqi->extraInfoFlags[0] = extraInfo >> 24;
+	dqi->extraInfoFlags[1] = extraInfo >> 16;
+	dqi->extraInfoFlags[2] = extraInfo >>  8;
+	dqi->extraInfoFlags[3] = extraInfo >>  0;
+
+	dqi->values.numInfoHashes = numInfoHashes;
+	memcpy(dqi->values.infoHashes, &tpmdata.buffer[infoHashOffset], numInfoHashes * TPM_HASH_SIZE);
+
+	dqi->values.numPCRVals = numPCR;	
+	memcpy(dqi->values.PCRVals, &tpmdata.buffer[pcrOffset], numPCR * TPM_HASH_SIZE);
+
+	memcpy(dqi->signature, &tpmdata.buffer[TPM_DATA_OFFSET], 256);
+	return 0;
+}
+
+
+
 
 /****************************************************************************/
 /*                                                                          */
@@ -483,14 +933,14 @@ uint32_t TPM_Quote2(uint32_t keyhandle,
 		}
 		/* build the request buffer */
 		ret = TSS_buildbuff("00 C2 T l l % % o L % o %",&tpmdata,
-		                             ordinal_no,
-		                               keyhndl,
-		                                 TPM_HASH_SIZE,antiReplay,
-		                                   serPCRSelectionSize,serPCRSelection->buffer,
-		                                     addVersion,
-		                                       TSS_Session_GetHandle(&sess),
-		                                         TPM_NONCE_SIZE,nonceodd,
-		                                           c,
+				    ordinal_no,
+				    keyhndl,
+				    TPM_HASH_SIZE,antiReplay,
+				    serPCRSelectionSize,serPCRSelection->buffer,
+				    addVersion,
+				    TSS_Session_GetHandle(&sess),
+				    TPM_NONCE_SIZE,nonceodd,
+				    c,
 		                                             TPM_HASH_SIZE,pubauth);
 		TSS_FreeTPMBuffer(serPCRSelection);
 		if ((ret & ERR_MASK) != 0) {

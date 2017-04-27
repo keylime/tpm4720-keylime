@@ -1,0 +1,8 @@
+# This goes in /etc/default or /etc/sysconfig depending on what flavor of 
+# Linux you use
+
+user="root"
+group="root"
+chroot="/"
+chdir="/"
+nice=""

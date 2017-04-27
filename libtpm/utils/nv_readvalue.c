@@ -316,12 +316,12 @@ int main(int argc, char * argv[])
 	}
 	/* validate the bytes and get the certificate length */
 	if (ret == 0) {
-	    if ((readbuffer[0] != 0x00) ||	/* stored certificate, full certificate */
+	    if ((readbuffer[0] != 0x10) ||	/* stored certificate, full certificate */
 		(readbuffer[1] != 0x01) ||
 		(readbuffer[2] != 0x00) ||	/* full certificate */
 		(readbuffer[5] != 0x10) ||
 		(readbuffer[6] != 0x02)) {
-		printf("Indexd dpoes not have certificate prefix\n");
+		printf("Index does not have certificate prefix\n");
 		ret = -1;
 	    }
 	    readbufferlen = (readbuffer[3] << 8) +	/* msb */
@@ -331,14 +331,31 @@ int main(int argc, char * argv[])
 	free(readbuffer);
 	readbuffer = NULL;
 	if (ret == 0) {
-	    ret = readtpm(index,
-			  readbufferlen,
-			  7,		/* skip the prefix */
-			  ownerAuthPtr,
-			  areaAuthPtr,
-			  &readbuffer,
-			  &readbufferlen,
-			  expectederror);
+		// read NVRAM 128 bytes at a time
+		uint32_t ekoffset = 0;
+		unsigned char *tmpbuf;
+		readbuffer = (unsigned char*)malloc(readbufferlen);
+
+		while(ekoffset < readbufferlen) {
+			uint32_t length = readbufferlen-ekoffset;
+			if(length>128)
+				length = 128;
+		    ret = readtpm(index,
+				  length,
+				  7+ekoffset,		/* skip the 7 byte prefix */
+				  ownerAuthPtr,
+				  areaAuthPtr,
+				  &tmpbuf,
+				  &length,
+				  expectederror);
+		    memcpy(readbuffer+ekoffset,tmpbuf,length);
+		    ekoffset += length;
+		    free(tmpbuf);
+
+
+	    if (ret !=0)
+	    	break;
+		}
 	}
     }
     /* optionally write the result to stdout */

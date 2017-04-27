@@ -43,6 +43,7 @@
 #include <limits.h>
 #include "tpm_constants.h"
 #include "tpm_types.h"
+#include "tpm.h"
 
 /* Sanity check on build macros are centralized here, since any TPM will use this header */
 
@@ -2528,5 +2529,4 @@ typedef struct tdTPM_DA_INFO_LIMITED {
                                                    thresholdCount. See 21.10. */
     TPM_SIZED_BUFFER vendorData;        /* Vendor specific data field */
 } TPM_DA_INFO_LIMITED;
-
 #endif

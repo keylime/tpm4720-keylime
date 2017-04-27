@@ -54,16 +54,32 @@
 
 /* local prototypes */
 
-
 static void usage(){
-	printf("Usage: Extend -ix pcrIndex [-ic message | -if filename] \n"
-              "\n"
-	       "-ix index    : the number of the PCR register to use\n"
-	       "-ic message  : Arbitrary command line message that will be digested and\n"
-	       "               used to extend the PCR with.\n"
-	       "-if filename : The file to measure and extend the PCR with\n"
-	       "\n");
-	exit(-1);
+    printf("Usage: Extend -ix pcrIndex [-ic message | -if filename] \n"
+           "\n"
+           "-ix index    : the number of the PCR register to use\n"
+           "-ic message  : Arbitrary command line message that will be digested and\n"
+           "               used to extend the PCR with.\n"
+           "-if filename : The file to measure and extend the PCR with\n"
+           "-ih hash     : the ascii hex digest to extend the PCR with\n"
+           "\n");
+    exit(-1);
+}
+
+size_t hex2bin(const unsigned char* hexstr, unsigned char *bytes)
+{
+    size_t hexstrLen = strlen(hexstr);
+    size_t bytesLen = hexstrLen / 2;
+    
+    size_t count = 0;
+    const char* pos = hexstr;
+    
+    for(count = 0; count < bytesLen; count++) {
+        sscanf(pos, "%2hhx", &bytes[count]);
+        pos += 2;
+    }
+    
+    return bytesLen;
 }
 
 int main(int argc, char *argv[])
@@ -71,6 +87,7 @@ int main(int argc, char *argv[])
     int ret = 0;
     char * message = NULL;
     char * filename = NULL;
+    char * hash = NULL;
     unsigned char msghash[20];    /* hash of message */
     uint32_t index = -1;
     unsigned char buffer[20];
@@ -94,6 +111,14 @@ int main(int argc, char *argv[])
 	    }
 	    message = argv[i];
 	}
+    else if (!strcmp(argv[i],"-ih")) {
+        i++;
+        if (i >= argc) {
+            printf("Parameter missing for '-ih'!\n");
+            usage();
+        }
+        hash = argv[i];
+    }
 	else if (!strcmp(argv[i],"-if")) {
 	    i++;
 	    if (i >= argc) {
@@ -114,22 +139,24 @@ int main(int argc, char *argv[])
 	i++;
     }
 
-    if (message && filename) {
-	printf("You must only provide one option '-if' or '-ic'.\n");
+    if ((message && filename) || (message && hash) || (filename && hash)) {
+	printf("You must only provide one option '-if', '-ih', or '-ic'.\n");
 	exit(-1);
     }
 
     if (message != NULL) {
 	TSS_sha1(message,strlen(message),msghash);
-    } else
-        if (filename != NULL) {
+    } else if (filename != NULL) {
 	    ret = TSS_SHAFile(filename, msghash);
 	    if (0 != ret) {
 		printf("Error %s from SHAFile.\n",
 		       TPM_GetErrMsg(ret));
 		exit(-1);
 	    }
-	} else {
+    } else if (hash != NULL) {
+        hex2bin(hash,msghash);
+    }
+    else {
 	    usage();
 	}
 	

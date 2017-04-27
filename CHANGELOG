@@ -36,7 +36,33 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Changes from 4665 to current
+Changes from 4720 to current
+
+Major
+____
+
+Utilities:
+- - - - -
+
+tpmconv
+	add a utility to convert a raw public key file into an PEM formatted file
+quote
+	updated to take in external data and writeout quote and signature to file
+identity
+	some debug code added
+encaik
+	added utility to perform privacy CA function for enrolling new AIKs.  
+	code mostly copied from identity.c into its own function that can be 
+	executed by itself without a TPM
+deepquote
+	added utility to generate deepquotes from the Xen vTPM implementation
+checkquote
+	added utility to check quotes
+checkdeepquote
+	added utility to validate deepquotes
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Changes from 4665 to 4720
 
 Major
 ____

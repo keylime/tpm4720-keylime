@@ -362,6 +362,21 @@ int main(int argc, char * argv[])
 	    exit(-1);
 	}
 	fclose(keyfile);
+	
+	/* write out the public key in TPM native format */
+// 	sprintf(filename, "%s.pkey", keyname);
+// 	keyfile = fopen(filename, "wb");
+// 	if (keyfile == NULL) {
+// 	    printf("Unable to create key file %s.\n", filename);
+// 	    exit(-1);
+// 	}
+// 	ret = fwrite(&(idkey.pub), 1, sizeof(idkey.pub), keyfile);
+// 	if (ret != sizeof(idkey.pub)) {
+// 	    printf("I/O Error writing key file %s\n", filename);
+// 	    exit(-1);
+// 	}
+// 	fclose(keyfile);
+	
 	/*
 	** convert the returned public key to OpenSSL format and
 	** export it to a file
@@ -578,7 +593,6 @@ uint32_t   do_activateIdentity(unsigned char * ownerAuth,
 			       blobsize);
 			exit(-1);
 		}
-
 
 		ret = TPM_ActivateIdentity(newhandle,
 		                           out_blob, blobsize,

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if [ ! -d /var/lib/tpmserver ]; then
+  /usr/sbin/tpmctl reset
+fi
+
+rm -Rf /tmp/tpmpid /var/log/tpmserver
+
+initctl start tpmserver

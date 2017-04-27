@@ -60,6 +60,7 @@ int main(int argc, char *argv[])
    RSA *rsa;                       /* OpenSSL format Public Key */
    const char *keypass = NULL;
    uint32_t keyHandle = 0;
+   int setkh = 0;
    
    TPM_setlog(0); /* turn off verbose output */
 
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
                     printf("Could not parse the key handle.\n");
                     exit(1);
                 }
+                setkh=1;
 	    } else {
 	        printf("Missing parameter to -ha\n");
 	        printUsage(argv[0]);
@@ -101,7 +103,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (keyHandle == 0) {
+    if (setkh == 0) {
         printf("Missing key handle.\n");
         printUsage(argv[0]);
         exit(1);

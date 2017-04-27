@@ -1,0 +1,8 @@
+#!/bin/bash
+sudo initctl stop tpmserver
+sudo initctl stop tpmbios
+sudo apt-get purge tpmtools -y
+sudo rm -Rf /var/log/upstart/tpmserver.log /var/lib/tpmserver /var/run/tpmserver.pid /var/log/upstart/tpmbios.log /var/log/tpmserver
+rm -f *.deb
+./make_package.sh 1.0 1 upstart
+sudo dpkg -i tpmtools*deb

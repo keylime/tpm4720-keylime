@@ -48,6 +48,7 @@ static void printUsage(void)
 {
     printf("Usage: takeown [-v12] [-sz keylen]\n"
 	   "   [-pwdo <owner password> -pwdof <owner authorization file name>\n"
+	   "   [-nopubsrk do not output the public SRK (CAUTION THERE IS NO WAY TO GET IT WITHOUT RESET)\n"
 	   "   [-pwds <storage root key password>]\n"
 	   "   [-ix <pcr num> <digest> PCR authorization for SRK]\n");
     printf("\tOmitting -pwds sets the SRK auth to all zeros\n");
@@ -67,6 +68,7 @@ int main(int argc, char *argv[])
 
 	TPM_setlog(0);		/* turn off verbose output */
 	TPM_BOOL v12 = FALSE;
+	TPM_BOOL outputSRK = TRUE;
 	const char *ownerPassword = NULL;
 	const char *ownerAuthFilename = NULL;
  	const char *srkAuth = NULL;
@@ -86,6 +88,9 @@ int main(int argc, char *argv[])
 	for (i=1 ; (i<argc)  ; i++) {
 	    if (!strcmp(argv[i], "-v12")) {
 		v12 = TRUE;
+	    }
+	    else if (!strcmp(argv[i], "-nopubsrk")) {
+		outputSRK = FALSE;
 	    }
 	    else if (!strcmp(argv[i], "-sz")) {
 		i++;
@@ -310,6 +315,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	    }
 	}
+	if (outputSRK) {
 	/*
 	** convert the returned public key to OpenSSL format and
 	** export it to a file
@@ -342,5 +348,6 @@ int main(int argc, char *argv[])
 	}
 	fclose(keyfile);
 	EVP_PKEY_free(pkey);
+	}
 	exit(0);
 }

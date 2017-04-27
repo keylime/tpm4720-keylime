@@ -59,6 +59,7 @@ int main(int argc, char *argv[])
    const char *ownerAuthFilename = NULL;
    unsigned char ownerAuth[20];
    int verbose = 0;
+   char *pubekpath = "pubek.pem";
    
    TPM_setlog(0); /* turn off verbose output */
 
@@ -82,6 +83,16 @@ int main(int argc, char *argv[])
 	       printf("-pwdof option needs a value\n");
 	       printUsage();
 	   }
+       }
+       else if (!strcmp(argv[i], "-ok")) {
+     i++;
+     if (i < argc) {
+         pubekpath = argv[i];
+     }
+     else {
+         printf("Missing parameter to -ok\n");
+         printUsage();
+     }
        }
        else if (!strcmp(argv[i], "-h")) {
 	   printUsage();
@@ -148,7 +159,7 @@ int main(int argc, char *argv[])
        exit(-4);
    }
    ret = EVP_PKEY_assign_RSA(pkey,rsa);
-   keyfile = fopen("pubek.pem","wb");
+   keyfile = fopen(pubekpath,"wb");
    if (keyfile == NULL)
       {
       printf("Unable to create public key file\n");
@@ -179,6 +190,7 @@ void printUsage(void)
     printf("\n");
     printf("getpubek (to pubek.pem)\n");
     printf("   [-pwdo <owner password> -pwdof <owner authorization file name>\n");
+    printf("   [-ok <filename> the file to output the pubek to\n");
     printf("\n");
     printf("With owner password - runs TPM_OwnerReadPubek\n");
     printf("Without owner password - runs TPM_ReadPubek\n");

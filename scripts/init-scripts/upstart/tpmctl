@@ -1,0 +1,56 @@
+#!/bin/bash
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export TPM_PATH=/var/lib/tpmserver
+export TPM_SERVER_NAME=localhost
+export TPM_SERVER_PORT=9998
+
+trace() {
+  logger -t "/usr/sbin/tpmctl" "$@"
+}
+
+emit() {
+  trace "$@"
+  echo "$@"
+}
+
+reset() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "You must be a root user to reset the TPM."
+    exit 1
+  fi
+
+  emit "*** Resetting TPM: all keys, PCRs and other state will be cleared."
+  emit "*** You'll see the service restart a few times. This is OK."
+  emit "*** You have 2 seconds to stop this process by using Control+C."
+  sleep 2
+
+  /sbin/initctl stop tpmserver
+  rm -rf ${TPM_PATH} /var/log/upstart/tpm*
+  mkdir -p ${TPM_PATH}/tpm0
+  
+  /sbin/initctl start tpmserver 
+  sleep 2
+  /sbin/initctl stop tpmserver 
+  /sbin/initctl start tpmserver
+  sleep 2
+  /sbin/initctl stop tpmserver
+}
+
+case "$1" in
+  reset)
+    trace "Attempting '$1' on tpm_server"
+    ;;
+esac
+
+case "$1" in
+  reset)
+    reset
+    ;;
+  *)
+    echo "Usage: $SCRIPTNAME {reset}" >&2
+    exit 3
+  ;;
+esac
+
+exit $?

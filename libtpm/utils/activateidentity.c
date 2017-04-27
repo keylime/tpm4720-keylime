@@ -116,6 +116,7 @@ int main(int argc, char * argv[])
     unsigned char ownerHash[20];
     unsigned char * ownerAuth = NULL;
     uint32_t aikHandle = 0;		/* IAK key handle */
+    int setkh = 0;
     unsigned char *blobData = NULL;	/* blob to be activated, free @1 */
     uint32_t blobSize;
 
@@ -139,10 +140,7 @@ int main(int argc, char * argv[])
 		   printf("Invalid -hk argument '%s'\n",argv[i]);
 		   exit(2);
 	       }
-	       if (aikHandle == 0) {
-		   printf("Invalid -hk argument '%s'\n",argv[i]);
-		   exit(2);
-	       }		 
+	       setkh=1;	 
 	   }
 	   else {
 	       printf("-hk option needs a value\n");
@@ -206,16 +204,6 @@ int main(int argc, char * argv[])
 		PrintUsage();
 	    }
 	}
-	else if (!strcmp("-ok",argv[i])) {
-	    i++;
-	    if (i < argc) {
-		keyFilename = argv[i];
-	    }
-	    else {
-		printf("Missing parameter for -ok\n");
-		PrintUsage();
-	    }
-	}
 	else if (!strcmp("-v",argv[i])) {
 	    TPM_setlog(1);
 	    verbose = TRUE;
@@ -229,7 +217,7 @@ int main(int argc, char * argv[])
 	}
     }
     /* validate command line arguments */
-    if (aikHandle == 0) {
+    if (setkh == 0) {
 	printf("Missing AIK handle\n");
 	PrintUsage();
     }

@@ -37,18 +37,26 @@
 #										#
 #################################################################################
 
-AM_CFLAGS = -Wall -ggdb -Wmissing-declarations -Wmissing-prototypes -Wnested-externs @STATIC_LINKING_FLAG@ -W -Werror
-INCLUDES =  -I../lib
+AM_CFLAGS = -fPIC -Wall -ggdb -Wmissing-declarations -Wmissing-prototypes -Wnested-externs @STATIC_LINKING_FLAG@ -W -Wno-deprecated-declarations
+INCLUDES =  -I../lib -I/usr/local/opt/openssl/include 
 LDADD = $(top_builddir)/lib/.libs/libtpm.a -lcrypto
 LDADD += @UDXTK_LD_PATHS@ @UDXTK_LD_LIBS@
 LDADD += @LIBTPMS_LIBRARY_PATH@ @LIBTPMS_LIBRARY@
 
+
+lib_LTLIBRARIES = libkeylime.la
+libkeylime_la_SOURCES = checkquote.c quote.c
+libkeylime_la_CFLAGS = -DSHARED_LIB
+libkeylime_la_LDFLAGS = -L$(top_builddir)/lib/.libs -ltpm
+
+
 AM_CONDITIONAL = TPM_VTPM
 AM_LDFLAGS =
-bin_PROGRAMS = takeown clearown createkey tpmreset evictkey  \
+bin_PROGRAMS = encaik takeown clearown createkey tpmreset evictkey  \
                signfile verifyfile sealfile unsealfile loadkey \
-               listkeys quote dumpkey bindfile unbindfile getpubek \
-               disablepubek chgauth chgtpmauth \
+               listkeys tpmquote checkquote checkquote2 checkdeepquote \
+	        dumpkey bindfile unbindfile getpubek getrandom\
+               disablepubek chgauth chgtpmauth deepquote \
 		createek tpmbios setownerinstall \
 		nv nv_definespace nv_readvalue nv_writevalue certifyselftest \
 		counter_create counter_increment counter_read counter_release \
@@ -71,16 +79,16 @@ bin_PROGRAMS = takeown clearown createkey tpmreset evictkey  \
 		createownerdelegation loadownerdelegation unsealxfile \
 		createkeydelegation updateverification verifydelegation \
 		random resetlockvalue setownerpointer session transport_test \
-		getpubkey getcontextcount physicalpresence \
+		getpubkey getcontextcount physicalpresence tpmconv \
 		libtpm-config
 
 if LIBTPMS_AVAILABLE
 bin_PROGRAMS +=	tis_test
 endif
 
-
-
-
+getrandom_SOURCE = getrandom.c
+encaik_SOURCE = encaik.c
+deepquote_SOURCES = deepquote.c
 takeown_SOURCES = takeown.c
 clearown_SOURCES = clearown.c
 createkey_SOURCES = createkey.c
@@ -90,8 +98,10 @@ loadkey_SOURCES = loadkey.c
 signfile_SOURCES = signfile.c
 signmsg_SOURCES = signmsg.c
 verifyfile_SOURCES = verifyfile.c
-quote_SOURCES = quote.c
+tpmquote_SOURCES = quote.c
+checkquote_SOURCES = checkquote.c
 quote2_SOURCES = quote2.c
+checkquote2_SOURCES = checkquote2.c
 dumpkey_SOURCES = dumpkey.c
 sealfile_SOURCES = sealfile.c
 sealxfile_SOURCES = sealxfile.c
@@ -172,3 +182,4 @@ readmanumaintpub_SOURCES = readmanumaintpub.c
 delegatemanage_SOURCES = delegatemanage.c
 delegatereadtable_SOURCES = delegatereadtable.c
 physicalpresence_SOURCES = physicalpresence.c
+tpmconv_SOURCES = tpmconv.c

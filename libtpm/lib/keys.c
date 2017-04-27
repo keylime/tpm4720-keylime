@@ -1320,6 +1320,35 @@ RSA *TSS_convpubkey(pubkeydata *k)
    rsa->e = exp;
    return rsa;
    }
+   
+/****************************************************************************/
+/*                                                                          */
+/* Convert an OpenSSL RSA public key to a TPM public key                    */
+/*                                                                          */
+/****************************************************************************/
+void TSS_convrsakey(RSA *rsa, pubkeydata *k)
+   {
+    memset(k,0,sizeof(pubkeydata));
+   	/* convert BIGNUMS */
+   	k->pubKey.keyLength =BN_bn2bin(rsa->n,k->pubKey.modulus);
+   	
+   	// default exponent
+   	unsigned char exponent[3] = {0x1,0x0,0x1};
+   	unsigned char tmp_exp[3];
+   	
+   	BN_bn2bin(rsa->e,tmp_exp);
+   	
+   	if(memcmp(tmp_exp,exponent,sizeof(exponent)!=0)) {
+   		k->algorithmParms.u.rsaKeyParms.exponentSize = BN_bn2bin(rsa->e,k->algorithmParms.u.rsaKeyParms.exponent);
+   	}
+   
+	/* Set up the parameters */
+	k->algorithmParms.algorithmID = TPM_ALG_RSA;
+	k->algorithmParms.encScheme = TPM_ES_NONE;
+	k->algorithmParms.sigScheme = TPM_SS_RSASSAPKCS1v15_SHA1;
+	k->algorithmParms.u.rsaKeyParms.keyLength = 2048;
+	k->algorithmParms.u.rsaKeyParms.numPrimes = 2;
+   }
 
 
 /****************************************************************************/

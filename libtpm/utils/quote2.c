@@ -75,7 +75,8 @@ int main(int argc, char *argv[])
 	TPM_BOOL addVersion = FALSE;
 	STACK_TPM_BUFFER(versionblob);
 	static char *keypass = NULL;
-
+    static char *nonceval = NULL; /* nonce value passed in by user */
+    FILE *fp = NULL;
 	
 	TPM_setlog(0);    /* turn off verbose output from TPM driver */
 	for (i=1 ; i<argc ; i++) {
@@ -121,6 +122,16 @@ int main(int argc, char *argv[])
 		    printUsage();
 		}
 	    }
+		else if (!strcmp(argv[i],"-nonce")) {
+			i++;
+			if (i < argc) {
+			nonceval = argv[i];
+			}
+			else {
+			printf("Missing parameter to -nonce\n");
+			printUsage();
+			}
+		}
 	    else if (!strcmp(argv[i], "-vinfo")) {
 		addVersion = TRUE;
 		printf("Adding version info.\n");
@@ -152,8 +163,15 @@ int main(int argc, char *argv[])
 	} else {
 		passptr = NULL;
 	}
-	/* for testing, use the password hash as the test nonce */
-	memcpy(data,passhash1,TPM_HASH_SIZE);
+	
+    if (nonceval != NULL) {
+    /* if specified, hash nonceval to create nonce data */
+    TSS_sha1((unsigned char *)nonceval,strlen(nonceval),data);
+    }
+    else {
+    /* for testing, use the password hash as the test nonce */
+    memcpy(data, passhash1, TPM_HASH_SIZE);
+    }
 	
 	ret = TPM_GetNumPCRRegisters(&pcrs);
 	if (ret != 0) {
@@ -219,7 +237,7 @@ int main(int argc, char *argv[])
 	           versionblob.used);
 	    serQuoteInfo.used += versionblob.used;
 	}
-	
+
 	ret = TPM_ValidateSignature(sigscheme,
 	                            &serQuoteInfo,
 	                            &signature,
@@ -229,6 +247,28 @@ int main(int argc, char *argv[])
 	} else {
 		printf("Verification succeeded\n");
 	}
+	
+    /* write out quote to file */
+    if((fp = fopen("quote.bin","w"))==0) {
+    printf("Error opening file quote.bin\n");
+    exit(-1);
+    }
+    
+    if(fwrite(&serQuoteInfo,sizeof(struct tpm_buffer),1,fp)<1) {
+    printf("Error writing quote info.\n");
+    exit(-1);
+    } 
+    if(fwrite(&signature,sizeof(struct tpm_buffer),1,fp)<1) {
+    printf("Error writing signature.\n");
+    exit(-1);
+    }
+    if(fwrite(&pubkey,sizeof(pubkey),1,fp)<1) {
+    printf("Error writing pubkey.\n");
+    exit(-1);
+    }
+    
+    fclose(fp);
+    
 	RSA_free(rsa);
 	exit(ret);
 }
@@ -240,6 +280,8 @@ static void printUsage(void)
 	   "\n"
 	   "Available options:\n"
 	   "-vinfo    : have TPM_CAP_VERSION_INFO returned in the response\n"
+       "[-nonce <random value>]\n"
 	   "\n");
     exit(-1);
 }
+

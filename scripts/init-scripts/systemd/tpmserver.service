@@ -1,0 +1,11 @@
+[Unit]
+Description=Start a TPM
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/tpmservice start
+ExecStop=/usr/sbin/tpmservice stop
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

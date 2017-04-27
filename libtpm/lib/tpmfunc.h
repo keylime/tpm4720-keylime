@@ -47,6 +47,8 @@
 #include <oiaposap.h>
 #include <tpm_structures.h>
 
+typedef struct DeepQuoteInfo DeepQuoteInfo;
+
 /* section 3: Admin startup and state */
 uint32_t TPM_Init(void); /* just for testing */
 uint32_t TPM_Startup(uint16_t type);
@@ -187,6 +189,20 @@ uint32_t TPM_Quote(uint32_t keyhandle,
                    TPM_PCR_SELECTION *tps,
                    TPM_PCR_COMPOSITE *tpc,
                    struct tpm_buffer *signature);
+uint32_t TPM_ValidateDeepQuoteInfo(RSA *pubKeyRSA,
+				   TPM_PCR_SELECTION *htps,
+				   unsigned char *nonce,
+				   DeepQuoteInfo *dqi);
+int TPM_WriteDeepQuoteBin(const char *path,
+			  const TPM_PCR_SELECTION *htps,
+			  const DeepQuoteInfo *dqi,
+        struct tpm_buffer *vq_signature,
+        TPM_PCR_COMPOSITE *vq_tpc);
+uint32_t TPM_DeepQuote(unsigned char *keyauth,
+                       unsigned char *externalData,
+                       TPM_PCR_SELECTION *vtps,
+                       TPM_PCR_SELECTION *ptps,
+		       DeepQuoteInfo *dqi);
 uint32_t TPM_PCRReset(TPM_PCR_SELECTION * selection);
 uint32_t TPM_Quote2(uint32_t keyhandle,
                     TPM_PCR_SELECTION * selection,
@@ -628,6 +644,11 @@ uint32_t TPM_ValidatePCRCompositeSignature(TPM_PCR_COMPOSITE *tpc,
                                            pubkeydata *pk,
                                            struct tpm_buffer *signature,
                                            uint16_t sigscheme);
+uint32_t TPM_ValidatePCRCompositeSignatureNoCap(TPM_PCR_COMPOSITE *tpc,
+                                           unsigned char *antiReplay,
+                                           RSA *rsa,
+                                           struct tpm_buffer *signature,
+                                           uint16_t sigscheme);
 
 
 /* helper functions to serialize / deserialize data structures */
@@ -696,6 +717,7 @@ uint32_t TPM_ReadSTClearFlags(const struct tpm_buffer *tb,
 uint32_t  TSS_KeyExtract(const struct tpm_buffer *tb, uint32_t offset, keydata *k);
 uint32_t  TSS_PubKeyExtract(const struct tpm_buffer *tb, uint32_t offset, pubkeydata *k);
 RSA      *TSS_convpubkey(pubkeydata *k);
+void      TSS_convrsakey(RSA *rsa, pubkeydata *k);
 uint32_t  TPM_WriteKey(struct tpm_buffer *tb, keydata *k);
 uint32_t  TPM_ReadKey(const struct tpm_buffer *tb, uint32_t offset, keydata *k);
 uint32_t  TPM_WriteKeyPub(struct tpm_buffer *tp, keydata *k);

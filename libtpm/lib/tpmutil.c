@@ -84,8 +84,9 @@ static TPM_RESULT TPMC_SHA1Final(unsigned char *md, void *context);
 static TPM_RESULT TPMC_SHA1Delete(void **context);
 
 /* local variables */
+unsigned int TPM_logflag = 1;
+#define logflag TPM_logflag
 
-static unsigned int logflag = 1;
 /* the to-be-used lowlevel transport */
 static struct tpm_transport *use_transp = NULL;
 static int actual_used_transport = 0;

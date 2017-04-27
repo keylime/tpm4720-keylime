@@ -1,0 +1,195 @@
+#!/bin/sh
+# Init script for tpm_server
+# Implemented based on LSB Core 3.1:
+#   * Sections: 20.2, 20.3
+#
+### BEGIN INIT INFO
+# Provides:          tpm_server
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: 
+# Description:       no description given
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
+
+name=tpmserver
+tpmserver_program=/usr/bin/tpm_server
+tpmserver_args=''
+tpmbios_program=/usr/bin/tpmbios
+tpmbios_args=''
+pidfile="/var/run/$name.pid"
+
+[ -r /etc/default/$name ] && . /etc/default/$name
+[ -r /etc/sysconfig/$name ] && . /etc/sysconfig/$name
+
+export TPM_PORT=9998
+export TCSD_TCP_DEVICE_PORT=${TPM_PORT}
+export TPM_SERVER_NAME=localhost
+export TPM_SERVER_PORT=${TPM_PORT}
+export TPM_PATH=/var/lib/tpmserver/tpm0
+export TPM_LOG_DIR=/var/log/tpmserver
+
+trace() {
+  logger -t "/etc/init.d/tpmserver" "$@"
+}
+
+emit() {
+  trace "$@"
+  echo "$@"
+}
+
+start() {
+
+  # Ensure the log directory is setup correctly.
+  [ ! -d ${TPM_LOG_DIR} ] && mkdir -p ${TPM_LOG_DIR}
+  chown "$user":"$group" $TPM_LOG_DIR
+  chmod 755 ${TPM_LOG_DIR}
+
+  if [ ! -d $TPM_PATH ]; then
+    mkdir -p $TPM_PATH
+    emit "tpm_server not yet initializing, resetting now"
+    reset
+  fi
+  chmod 700 $TPM_PATH
+  
+  # Run the program!  
+  chroot --userspec "$user":"$group" "$chroot" sh -c "
+    
+    cd \"$chdir\"
+    exec \"$tpmserver_program\" $tpmserver_args
+  " >> ${TPM_LOG_DIR}/tpm_server.stdout 2>> ${TPM_LOG_DIR}/tpm_server.stderr &
+
+  # Generate the pidfile from here. If we instead made the forked process
+  # generate it there will be a race condition between the pidfile writing
+  # and a process possibly asking for status.
+  echo $! > $pidfile
+
+  sleep 2
+
+  chroot --userspec "$user":"$group" "$chroot" sh -c "
+    
+    cd \"$chdir\"
+    exec \"$tpmbios_program\" $tpmbios_args
+  " >> ${TPM_LOG_DIR}/tpmbios.stdout 2>> ${TPM_LOG_DIR}/tpmbios.stderr &
+
+  emit "$name started"
+
+  return 0
+}
+
+stop() {
+  # Try a few times to kill TERM the program
+  if status ; then
+    pid=$(cat "$pidfile")
+    trace "Killing $name (pid $pid) with SIGTERM"
+    kill -TERM $pid
+    # Wait for it to exit.
+    for i in 1 2 3 4 5 ; do
+      trace "Waiting $name (pid $pid) to die..."
+      status || break
+      sleep 1
+    done
+    if status ; then
+      emit "$name stop failed; still running."
+    else
+      emit "$name stopped."
+    fi
+  fi
+}
+
+reset() {
+  emit "Resetting TPM: all keys, PCRs and other state will be cleared"
+
+  force_stop
+  rm -rf ${TPM_PATH}
+  rm -rf ${TPM_LOG_DIR}
+
+  mkdir -p $TPM_PATH
+  start
+  
+  force_stop
+  start
+
+  force_stop
+}
+
+status() {
+  if [ -f "$pidfile" ] ; then
+    pid=$(cat "$pidfile")
+    if ps -p $pid > /dev/null 2> /dev/null ; then
+      # process by this pid is running.
+      # It may not be our pid, but that's what you get with just pidfiles.
+      # TODO(sissel): Check if this process seems to be the same as the one we
+      # expect. It'd be nice to use flock here, but flock uses fork, not exec,
+      # so it makes it quite awkward to use in this case.
+      return 0
+    else
+      return 2 # program is dead but pid file exists
+    fi
+  else
+    return 3 # program is not running
+  fi
+}
+
+force_stop() {
+  if status ; then
+    stop
+    status && kill -KILL $(cat "$pidfile")
+  fi
+}
+
+
+case "$1" in
+  force-start|start|stop|force-stop|restart|reset)
+    trace "Attempting '$1' on tpm_server"
+    ;;
+esac
+
+case "$1" in
+  force-start)
+    PRESTART=no
+    exec "$0" start
+    ;;
+  start)
+    status
+    code=$?
+    if [ $code -eq 0 ]; then
+      emit "$name is already running"
+      exit $code
+    else
+      start
+      exit $?
+    fi
+    ;;
+  stop) stop ;;
+  force-stop) force_stop ;;
+  status) 
+    status
+    code=$?
+    if [ $code -eq 0 ] ; then
+      emit "$name is running"
+    else
+      emit "$name is not running"
+    fi
+    exit $code
+    ;;
+  reset)
+    stop
+    reset
+    start
+    ;;
+  restart) 
+    
+    stop && start 
+    ;;
+  *)
+    echo "Usage: $SCRIPTNAME {start|force-start|stop|force-start|force-stop|status|restart|reset}" >&2
+    exit 3
+  ;;
+esac
+
+exit $?

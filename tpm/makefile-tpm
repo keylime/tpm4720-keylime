@@ -40,7 +40,8 @@
 
 CC = /usr/bin/gcc
 CCFLAGS = -Wall -W -Wmissing-declarations -Wmissing-prototypes -Wnested-externs -c -ggdb \
-	-DTPM_NV_DISK -DTPM_V12 -O0 -DTPM_DEBUG -DTPM_TEST -DTPM_AES -DTPM_POSIX -DTPM_PCCLIENT
+	-DTPM_NV_DISK -DTPM_V12 -O0 -DTPM_DEBUG -DTPM_TEST -DTPM_AES -DTPM_POSIX -DTPM_PCCLIENT \
+	-I/usr/local/opt/openssl/include -L/usr/local/opt/openssl/lib
 LNFLAGS = -ggdb -lcrypto
 
 all: tpm_server

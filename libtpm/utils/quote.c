@@ -61,23 +61,41 @@ uint32_t TPM_ValidatePCRCompositeSignatureRSA(TPM_PCR_COMPOSITE *tpc,
 					      struct tpm_buffer *signature,
 					      uint16_t sigscheme);
 
-static void printUsage(void);
+static int printUsage()
+{
+    printf("Usage: quote\n"
+	   "-hk <key handle in hex>\n"
+	   "-bm <pcr mask in hex>\n"
+	   "[-noverify]\n"
+	   "[-pwdk <key password>]\n"
+       "[-oq   <destination file for quote>]\n"
+	   "[-nonce <random value>]\n"
+	   "[-cert <key certificate to verify the quote signature]\n");
+    return -1;
+}
 
+#ifndef SHARED_LIB
+#define outStream stdout
 int main(int argc, char *argv[])
+#else
+#define exit(rc) return rc;	
+int quote_main(FILE *outStream, int argc, char *argv[])
+#endif	
 {
     int ret;			/* general return value */
     uint32_t keyhandle = 0;	/* handle of quote key */
+    int setkh = 0;
     unsigned int pcrmask = 0;	/* pcr register mask */
     unsigned char passhash1[TPM_HASH_SIZE];	/* hash of key password */
     unsigned char nonce[TPM_NONCE_SIZE];	/* nonce data */
-
+    static char *nonceval = NULL; /* nonce value passed in by user */
+    static char *outputname = NULL;         /* file to write out the quote to */
     STACK_TPM_BUFFER(signature);
     pubkeydata pubkey;	/* public key structure */
     unsigned char *passptr;
     TPM_PCR_COMPOSITE tpc;
     STACK_TPM_BUFFER (ser_tpc);
     STACK_TPM_BUFFER (ser_tqi);
-    STACK_TPM_BUFFER (response);
     uint32_t pcrs;
     int i;
     uint16_t sigscheme = TPM_SS_RSASSAPKCS1v15_SHA1;
@@ -85,6 +103,8 @@ int main(int argc, char *argv[])
     static char *keypass = NULL;
     const char *certFilename = NULL;
     int verbose = FALSE;
+    FILE *fp = NULL;
+    int noverify = FALSE;
     
     TPM_setlog(0);		/* turn off verbose output from TPM driver */
     for (i=1 ; i<argc ; i++) {
@@ -96,14 +116,11 @@ int main(int argc, char *argv[])
 		    printf("Invalid -hk argument '%s'\n",argv[i]);
 		    exit(2);
 		}
-		if (keyhandle == 0) {
-		    printf("Invalid -hk argument '%s'\n",argv[i]);
-		    exit(2);
-		}		 
+		setkh=1;	 
 	    }
 	    else {
 		printf("-hk option needs a value\n");
-		printUsage();
+		return printUsage();
 	    }
 	}
 	else if (!strcmp(argv[i], "-pwdk")) {
@@ -113,8 +130,11 @@ int main(int argc, char *argv[])
 	    }
 	    else {
 		printf("Missing parameter to -pwdk\n");
-		printUsage();
+		return printUsage();
 	    }
+	}
+	else if (!strcmp(argv[i], "-noverify")) {
+		noverify= TRUE;
 	}
 	else if (strcmp(argv[i],"-bm") == 0) {
 	    i++;
@@ -127,7 +147,7 @@ int main(int argc, char *argv[])
 	    }
 	    else {
 		printf("-bm option needs a value\n");
-		printUsage();
+		return printUsage();
 	    }
 	}
 	else if (!strcmp(argv[i], "-cert")) {
@@ -137,11 +157,31 @@ int main(int argc, char *argv[])
 	    }
 	    else {
 		printf("Missing parameter to -cert\n");
+		return printUsage();
+	    }
+	}
+	else if (!strcmp(argv[i], "-oq")) {
+	    i++;
+	    if (i < argc) {
+		outputname = argv[i];
+	    }
+	    else {
+		printf("Missing parameter to -oq\n");
 		printUsage();
 	    }
 	}
+    else if (!strcmp(argv[i],"-nonce")) {
+        i++;
+        if (i < argc) {
+        nonceval = argv[i];
+        }
+        else {
+        printf("Missing parameter to -nonce\n");
+        return printUsage();
+        }
+    }
 	else if (!strcmp(argv[i], "-h")) {
-	    printUsage();
+	    return printUsage();
 	}
 	else if (!strcmp(argv[i], "-v")) {
 	    verbose = TRUE;
@@ -149,14 +189,18 @@ int main(int argc, char *argv[])
 	}
 	else {
 	    printf("\n%s is not a valid option\n", argv[i]);
-	    printUsage();
+	    return printUsage();
 	}
     }
-    if ((keyhandle == 0) ||
+    if ((setkh== 0) ||
 	(pcrmask == 0)) {
 	printf("Missing argument\n");
-	printUsage();
+	return printUsage();
     }
+    if(outputname==NULL)
+    	outputname = "quote.bin";
+
+
     /* get the SHA1 hash of the password string for use as the Key Authorization Data */
     if (keypass != NULL) {
 	TSS_sha1((unsigned char *)keypass, strlen(keypass), passhash1);
@@ -165,8 +209,15 @@ int main(int argc, char *argv[])
     else {
 	passptr = NULL;
     }
+    
+    if (nonceval != NULL) {
+    /* if specified, hash nonceval to create nonce data */
+    TSS_sha1((unsigned char *)nonceval,strlen(nonceval),nonce);
+    }
+    else {
     /* for testing, use the password hash as the test nonce */
     memcpy(nonce, passhash1, TPM_HASH_SIZE);
+    }
 	
     ret = TPM_GetNumPCRRegisters(&pcrs);
     if (ret != 0) {
@@ -196,6 +247,7 @@ int main(int argc, char *argv[])
 	printf("Error '%s' from TPM_Quote\n", TPM_GetErrMsg(ret));
 	exit(ret);
     }
+    
     /*
     ** Get the public key and convert to an OpenSSL RSA public key
     */
@@ -204,7 +256,34 @@ int main(int argc, char *argv[])
 	printf("quote: Error '%s' from TPM_GetPubKey\n", TPM_GetErrMsg(ret));
 	exit(-6);
     }
-	
+        
+    /* write out quote to file */
+    if((fp = fopen(outputname,"w"))==0) {
+    printf("Error opening file %s\n",outputname);
+    exit(-1);
+    }
+    if(fwrite(&signature,sizeof(uint32_t),3,fp)<3) {
+    printf("Error writing signature header.\n");
+    exit(-1);
+    }
+    if(fwrite(&signature.buffer,sizeof(char),signature.used,fp)<signature.used) {
+    printf("Error writing signature data.\n");
+    exit(-1);
+    }
+    if(fwrite(&tpc,sizeof(TPM_PCR_COMPOSITE),1,fp)<1) {
+    printf("Error writing PCR composite.\n");
+    exit(-1);
+    }
+    if(fwrite(tpc.pcrValue.buffer,sizeof(BYTE),tpc.pcrValue.size,fp)<tpc.pcrValue.size) {
+    printf("Error writing PCR buffer.\n");
+    exit(-1);
+    }
+    fclose(fp);
+    
+    if(noverify) {
+    	exit(0);
+    }
+    
     ret = TPM_ValidatePCRCompositeSignature(&tpc,
 					    nonce,
 					    &pubkey,
@@ -215,8 +294,8 @@ int main(int argc, char *argv[])
 	       TPM_GetErrMsg(ret));
 	exit(ret);
     }
-    printf("Verification against AIK succeeded\n");
-
+    fprintf(outStream, "Verification against AIK succeeded\n");
+    
     /* optionally verify the quote signature against the key certificate */
     if (certFilename != NULL) {
 	unsigned char *certStream = NULL;	/* freed @1 */
@@ -236,33 +315,33 @@ int main(int argc, char *argv[])
 	}
 	/* convert to openssl X509 */
 	if (ret == 0) {
-	    if (verbose) printf("quote: parsing the certificate stream\n");
+	    if (verbose) fprintf(outStream, "quote: parsing the certificate stream\n");
 	    tmpPtr = certStream;
 	    x509Certificate = d2i_X509(NULL,
 				       (const unsigned char **)&tmpPtr, certStreamLength);
 	    if (x509Certificate == NULL) {
-		printf("Error in certificate deserialization d2i_X509()\n");
+		fprintf(outStream, "Error in certificate deserialization d2i_X509()\n");
 		ret = -1;
 	    }
 	}
 	if (ret == 0) {
-	    if (verbose) printf("quote: get the certificate public key\n");
+	    if (verbose) fprintf(outStream, "quote: get the certificate public key\n");
 	    ret = GetRSAKey(&rsaKey,	/* freed @3 */
 			    x509Certificate);
 	}
 	if (ret == 0) {
-	    if (verbose) printf("quote: quote validate signature\n");
+	    if (verbose) fprintf(outStream, "quote: quote validate signature\n");
 	    ret = TPM_ValidatePCRCompositeSignatureRSA(&tpc,
 						       nonce,
 						       rsaKey,
 						       &signature,
 						       sigscheme);
 	    if (ret != 0) {
-		printf("Verification against certificate failed\n");
+		fprintf(outStream, "Verification against certificate failed\n");
 	    }
 	}
 	if (ret == 0) {
-	    printf("Verification against certificate succeeded\n");
+	    fprintf(outStream, "Verification against certificate succeeded\n");
 	}
 	free(certStream);		/* @1 */
 	X509_free(x509Certificate); 	/* @2 */
@@ -339,17 +418,4 @@ int GetRSAKey(RSA **rsa,		/* freed by caller */
 	}
     }
     return rc;
-}
-
-/* FIXME move to library */
-
-
-static void printUsage()
-{
-    printf("Usage: quote\n"
-	   "-hk <key handle in hex>\n"
-	   "-bm <pcr mask in hex>\n"
-	   "[-pwdk <key password>]\n"
-	   "[-cert <key certificate to verify the quote signature]\n");
-    exit(-1);
 }

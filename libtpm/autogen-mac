@@ -1,8 +1,6 @@
+#!/bin/bash
+
 #################################################################################
-#										#
-# Makefile for libtpm/lib							#
-#										#
-# $Id: Makefile.am 4702 2013-01-03 21:26:29Z kgoldman $				#
 #										#
 # (c) Copyright IBM Corporation 2006, 2010.					#
 # 										#
@@ -37,31 +35,26 @@
 #										#
 #################################################################################
 
-AM_CFLAGS = -Wall -ggdb -Wuninitialized -Wmissing-declarations -Wmissing-prototypes -Wnested-externs -fPIC -W  -Wno-deprecated-declarations 
-lib_LTLIBRARIES = libtpm.la
-INCLUDES=-I/usr/local/opt/openssl/include 
-AM_LDFLAGS = -lcrypto @LIBTPMS_LIBRARY_PATH@ @LIBTPMS_LIBRARY@ 
+uname=$(uname)
 
-include_HEADERS = tpmfunc.h \
-	tpm.h \
-	tpmkeys.h \
-	tpm_constants.h \
-	tpm_error.h \
-	tpm_structures.h \
-	tpmutil.h \
-	tpm_types.h \
-	tpm_lowlevel.h \
-	oiaposap.h
+rm -rf install-sh depcomp mkinstalldirs missing config.*
 
-libtpm_la_SOURCES = auditing.c bind.c chgauth.c context.c \
-	counter.c daa.c debug.c delegation.c dir.c \
-	eviction.c hmac.c identity.c keys.c keyswap.c \
-	maintenance.c management.c migrate.c miscfunc.c nv.c \
-	oiaposap.c optin.c owner.c ownertpmdiag.c \
-	pcrs.c raw.c rng.c seal.c serialize.c session.c \
-	sha.c signature.c startup.c testing.c \
-	ticks.c tpmutil.c tpmutil_sock.c tpmutil_tty.c tpmutil_unixio.c \
-	tpmutil_libtpms.c \
-	transport.c
+PROGS="glibtoolize aclocal automake autoconf"
 
-EXTRA_DIST = hmac.h oiaposap.h pcrs.h tpmutil.h
+for PROG in ${PROGS}; do
+	type -P ${PROG} > /dev/null || \
+		{ echo "${PROG} is needed for builing."; exit 1;}
+done
+
+
+glibtoolize --force --copy
+aclocal
+automake  --add-missing --copy --foreign
+autoconf
+
+if [ "$uname" == "AIX" ]; then
+	cat configure | sed "s/--no-verify//" > configure.AIX
+	mv configure configure.BAD
+	mv configure.AIX configure
+	chmod 751 configure
+fi
