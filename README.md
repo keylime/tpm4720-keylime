@@ -3,7 +3,7 @@ A fork of the IBM software TPM code from http://sourceforge.net/projects/ibmswtp
 
 Specifically, this is a fork of revision 4720 https://sourceforge.net/projects/ibmswtpm/files/tpm4720.tar.gz/download
 
-It includes patches and bug fixes required to use the libtpm utilities with keylime.
+It includes patches and bug fixes required to use the libtpm utilities with keylime: https://github.com/mit-ll/python-keylime 
 
 # Build for use with Keylime with a real TPM
 
