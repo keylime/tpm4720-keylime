@@ -77,7 +77,8 @@ int main(int argc, char *argv[])
     int setkh = 0;
     unsigned int vpcrmask = 0;              /* virtual pcr register mask */
     unsigned int hpcrmask = 0;              /* hardware pcr register mask */
-    unsigned char passhash1[TPM_HASH_SIZE]; /* hash of key password */
+    unsigned char owner_hash[TPM_HASH_SIZE]; /* hash of owner password */
+    unsigned char key_hash[TPM_HASH_SIZE]; /* hash of key password */
     unsigned char vq_nonce[TPM_NONCE_SIZE];    /* nonce data */
     unsigned char dq_nonce[TPM_NONCE_SIZE];    /* nonce data */
     static char *nonceval = NULL;           /* nonce value passed in by user */
@@ -89,6 +90,8 @@ int main(int argc, char *argv[])
     uint32_t pcrs;
     TPM_PCR_SELECTION vtps;
     TPM_PCR_SELECTION htps;
+    static char *keypass = NULL;
+    unsigned char *key_hash_ptr;
     int i;
     DeepQuoteInfo dqi = {0,};
     STACK_TPM_BUFFER(signature);
@@ -136,6 +139,16 @@ int main(int argc, char *argv[])
 		printUsage();
 	    }
 	}
+    else if (!strcmp(argv[i], "-pwdk")) {
+        i++;
+        if (i < argc) {
+            keypass = argv[i];
+        }
+        else {
+            printf("Missing parameter to -pwdk\n");
+            printUsage();
+        }
+    }
 	else if (!strcmp(argv[i], "-oq")) {
 	    i++;
 	    if (i < argc) {
@@ -193,7 +206,16 @@ int main(int argc, char *argv[])
     	outputname = "deepquote.bin";
 
     /* get the SHA1 hash of the password string for use as the Key Authorization Data */
-    TSS_sha1((unsigned char *)ownerpw, strlen(ownerpw), passhash1);
+    TSS_sha1((unsigned char *)ownerpw, strlen(ownerpw), owner_hash);
+    
+    /* get the SHA1 hash of the password string for use as the Key Authorization Data */
+    if (keypass != NULL) {
+        TSS_sha1((unsigned char *)keypass, strlen(keypass), key_hash);
+        key_hash_ptr = key_hash;
+    }
+    else {
+        key_hash_ptr = NULL;
+    }
     
     /* hash nonceval to create nonce data */
     TSS_sha1((unsigned char *)nonceval,strlen(nonceval),vq_nonce);
@@ -216,7 +238,7 @@ int main(int argc, char *argv[])
     ** perform the TPM Quote function
     */
     ret = TPM_Quote(keyhandle,	/* KEY handle */
-		    NULL,	/* Key Password (hashed), or null */
+		    key_hash_ptr,	/* Key Password (hashed), or null */
 		    vq_nonce,	        /* nonce data */
 		    &vtps,	        /* specify PCR registers */
 		    &tpc,		/* pointer to pcr composite */
@@ -247,7 +269,7 @@ int main(int argc, char *argv[])
     /*
     ** perform the TPM DeepQuote function
     */
-    ret = TPM_DeepQuote(passhash1,    /* Owner Password (hashed) */
+    ret = TPM_DeepQuote(owner_hash,    /* Owner Password (hashed) */
                         dq_nonce,        /* nonce data */
                         &vtps,        /* specify vPCR registers */
                         &htps,        /* specify hardware PCR registers */
