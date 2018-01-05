@@ -87,7 +87,7 @@ static void usage() {
 	printf(" -ac          : To activate the identity after generating it.\n");
 	printf(" -ekb         : Use a TPM_EK_BLOB for activation instead of TPM_ASYM_CA_CONTENTS.\n");
 	printf(" -v12         : Use version 1.2 key structure\n");
-	printf(" -ok <keyname>: Key file name (.key and .pem appended)\n");
+	printf(" -ok <keyname>: Private key file name (public key returned via stdout)\n");
 	printf("\n");
 	printf("Examples:\n");
 	exit(-1);
@@ -112,13 +112,14 @@ int main(int argc, char * argv[])
     unsigned char idbindingbuffer[idbindingbuffersize];    	
     keydata keyparms;
     keydata idkey;
-    char filename[256];             /* file name string of key file */
     FILE *keyfile;                  /* output file for key token */
-    FILE *pubkeyfile;               /* output file for public key token */
     RSA *rsa;                       /* OpenSSL format Public Key */
     EVP_PKEY *pkey = NULL;          /* OpenSSL public key */
     unsigned char idkeyblob[4096];  /* area to hold key blob */
     unsigned int  idkeybloblen;     /* key blob length */
+    BIO *mem;                       /* openssl construct to read pubkey into memory */
+    char *pubkeyblob;               /* area to hold pubkey blob */
+    unsigned long  pubkeybloblen;   /* pubkey blob length */
     char *keyname = NULL;           /* pointer to key name argument */
     int activate = FALSE;
     int use_ca = TRUE;
@@ -350,32 +351,17 @@ int main(int argc, char * argv[])
     /* optionally save the key token and public key */
     if (keyname != NULL) {
 	/* key token */
-	sprintf(filename, "%s.key", keyname);
-	keyfile = fopen(filename, "wb");
+	keyfile = fopen(keyname, "wb");
 	if (keyfile == NULL) {
-	    printf("Unable to create key file %s.\n", filename);
-	    exit(-1);
+		printf("Unable to create key file %s.\n", keyname);
+		exit(-1);
 	}
 	ret = fwrite(idkeyblob, 1, idkeybloblen, keyfile);
 	if (ret != idkeybloblen) {
-	    printf("I/O Error writing key file %s\n", filename);
-	    exit(-1);
+		printf("I/O Error writing key file %s\n", keyname);
+		exit(-1);
 	}
 	fclose(keyfile);
-	
-	/* write out the public key in TPM native format */
-// 	sprintf(filename, "%s.pkey", keyname);
-// 	keyfile = fopen(filename, "wb");
-// 	if (keyfile == NULL) {
-// 	    printf("Unable to create key file %s.\n", filename);
-// 	    exit(-1);
-// 	}
-// 	ret = fwrite(&(idkey.pub), 1, sizeof(idkey.pub), keyfile);
-// 	if (ret != sizeof(idkey.pub)) {
-// 	    printf("I/O Error writing key file %s\n", filename);
-// 	    exit(-1);
-// 	}
-// 	fclose(keyfile);
 	
 	/*
 	** convert the returned public key to OpenSSL format and
@@ -397,18 +383,19 @@ int main(int argc, char * argv[])
 	    printf("Unable to assign public key to EVP_PKEY\n");
 	    exit(-5);
 	}
-	sprintf(filename, "%s.pem", keyname);
-	pubkeyfile = fopen(filename,"wb");
-	if (pubkeyfile == NULL) {
-	    printf("Unable to create public key file\n");
-	    exit(-6);
-	}
-	ret = PEM_write_PUBKEY(pubkeyfile, pkey);
+	mem = BIO_new(BIO_s_mem());
+	ret = PEM_write_bio_PUBKEY(mem, pkey);
 	if (ret == 0) {
-	    printf("I/O Error writing public key file\n");
-	    exit(-7);
+		printf("I/O Error getting public key\n");
+		exit(-6);
 	}
-	fclose(pubkeyfile);
+	pubkeybloblen = BIO_get_mem_data(mem, &pubkeyblob);
+	ret = write(fileno(stdout), pubkeyblob, pubkeybloblen);
+	if (ret != pubkeybloblen) {
+		printf("I/O Error writing pubkey\n");
+		exit(-7);
+	}
+	BIO_free(mem);
 	EVP_PKEY_free(pkey);
 	ret = 0;
     }
