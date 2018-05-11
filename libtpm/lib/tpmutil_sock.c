@@ -168,7 +168,7 @@ static uint32_t TPM_OpenClientSocket(int *sock_fd)
 	    return ERR_IO;
 	}
 	serv_addr.sin_family = host->h_addrtype;
-	memcpy(&serv_addr.sin_addr, host->h_addr, host->h_length);
+	memcpy(&serv_addr.sin_addr, host->h_addr_list[0], host->h_length);
     }
     else {
 /*  	printf("TPM_OpenClientSocket: server address: %s\n",server_name); */

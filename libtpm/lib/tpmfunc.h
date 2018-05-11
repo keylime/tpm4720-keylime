@@ -47,7 +47,8 @@
 #include <oiaposap.h>
 #include <tpm_structures.h>
 
-typedef struct DeepQuoteInfo DeepQuoteInfo;
+#include "deepquote.h"
+
 
 /* section 3: Admin startup and state */
 uint32_t TPM_Init(void); /* just for testing */
