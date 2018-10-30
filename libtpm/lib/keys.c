@@ -1316,8 +1316,15 @@ RSA *TSS_convpubkey(pubkeydata *k)
                 exp);
    }
    /* set up the RSA public key structure */
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL || defined(LIBRESSL_VERSION_NUMBER)
    rsa->n = mod;
    rsa->e = exp;
+#else
+   if (!RSA_set0_key(rsa, mod, exp, NULL)) {
+      printf("TSS_convpubkey: Error in RSA_set0_key()\n");
+      return NULL;
+   }
+#endif
    return rsa;
    }
    
@@ -1330,16 +1337,23 @@ void TSS_convrsakey(RSA *rsa, pubkeydata *k)
    {
     memset(k,0,sizeof(pubkeydata));
    	/* convert BIGNUMS */
-   	k->pubKey.keyLength =BN_bn2bin(rsa->n,k->pubKey.modulus);
+    const BIGNUM *bnn, *bne;
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL || defined(LIBRESSL_VERSION_NUMBER)
+	bnn = rsa->n;
+	bne = rsa->e;
+#else
+	RSA_get0_key(rsa, &bnn, &bne, NULL);
+#endif
+	k->pubKey.keyLength =BN_bn2bin(bnn,k->pubKey.modulus);
    	
    	// default exponent
    	unsigned char exponent[3] = {0x1,0x0,0x1};
    	unsigned char tmp_exp[3];
    	
-   	BN_bn2bin(rsa->e,tmp_exp);
+	BN_bn2bin(bne,tmp_exp);
    	
    	if(memcmp(tmp_exp,exponent,sizeof(exponent)!=0)) {
-   		k->algorithmParms.u.rsaKeyParms.exponentSize = BN_bn2bin(rsa->e,k->algorithmParms.u.rsaKeyParms.exponent);
+		k->algorithmParms.u.rsaKeyParms.exponentSize = BN_bn2bin(bne,k->algorithmParms.u.rsaKeyParms.exponent);
    	}
    
 	/* Set up the parameters */

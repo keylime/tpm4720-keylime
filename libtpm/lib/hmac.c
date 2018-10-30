@@ -381,15 +381,25 @@ uint32_t TSS_authhmac(unsigned char *digest, unsigned char *key, unsigned int ke
 /****************************************************************************/
 uint32_t TSS_rawhmac(unsigned char *digest, const unsigned char *key, unsigned int keylen, ...)
    {
-   HMAC_CTX hmac;
+   HMAC_CTX *hmac;
    unsigned int dlen;
    unsigned char *data;
    va_list argp;
    
-#ifdef HAVE_HMAC_CTX_CLEANUP
-   HMAC_CTX_init(&hmac);
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL || defined(LIBRESSL_VERSION_NUMBER)
+   hmac = malloc(sizeof(*hmac));
+#else
+    hmac = HMAC_CTX_new();
 #endif
-   HMAC_Init(&hmac,key,keylen,EVP_sha1());
+   if (!hmac) {
+      return ERR_NULL_ARG;
+   }
+
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL || defined(LIBRESSL_VERSION_NUMBER)
+   HMAC_CTX_init(hmac);
+#endif
+
+   HMAC_Init(hmac,key,keylen,EVP_sha1());
 
    va_start(argp,keylen);
    for (;;)
@@ -398,14 +408,15 @@ uint32_t TSS_rawhmac(unsigned char *digest, const unsigned char *key, unsigned i
       if (dlen == 0) break;
       data = (unsigned char *)va_arg(argp,unsigned char *);
       if (data == NULL) return ERR_NULL_ARG;
-      HMAC_Update(&hmac,data,dlen);
+      HMAC_Update(hmac,data,dlen);
       }
-   HMAC_Final(&hmac,digest,&dlen);
+   HMAC_Final(hmac,digest,&dlen);
 
-#ifdef HAVE_HMAC_CTX_CLEANUP
-   HMAC_CTX_cleanup(&hmac);
+#if OPENSSL_VERSION_NUMBER < 0x1010000fL || defined(LIBRESSL_VERSION_NUMBER)
+   HMAC_CTX_cleanup(hmac);
+   free(hmac);
 #else
-   HMAC_cleanup(&hmac);
+   HMAC_CTX_free(hmac);
 #endif
    va_end(argp);
    return 0;
